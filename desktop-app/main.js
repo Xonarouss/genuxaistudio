@@ -8,7 +8,7 @@ const { spawn } = require('child_process');
 
 const APP_VERSION = '1.0.4';
 const GITHUB_REPO = 'Xonarouss/genuxaistudio';
-const BACKEND_PORTAL_URL = 'http://localhost:3001/api/telemetry';
+const BACKEND_PORTAL_URL = 'https://genuxai.io/api/telemetry';
 
 let mainWindow = null;
 let activeEngineChild = null;
@@ -464,6 +464,34 @@ ipcMain.handle('settings:save', (_, newSettings) => {
     exportDir: getEffectiveExportDir(),
     appVersion: APP_VERSION
   };
+});
+
+// -------------------------------------------------------------------
+// Permanent Character Vault Storage (~/.cache/genux/vault/characters.json)
+// -------------------------------------------------------------------
+const VAULT_DIR = path.join(os.homedir(), '.cache', 'genux', 'vault');
+const VAULT_FILE = path.join(VAULT_DIR, 'characters.json');
+
+ipcMain.handle('vault:getCharacters', () => {
+  try {
+    if (fs.existsSync(VAULT_FILE)) {
+      return JSON.parse(fs.readFileSync(VAULT_FILE, 'utf8'));
+    }
+  } catch (err) {
+    console.error('[Vault] Error reading characters.json:', err);
+  }
+  return null;
+});
+
+ipcMain.handle('vault:saveCharacters', (_, characters) => {
+  try {
+    if (!fs.existsSync(VAULT_DIR)) fs.mkdirSync(VAULT_DIR, { recursive: true });
+    fs.writeFileSync(VAULT_FILE, JSON.stringify(characters, null, 2), 'utf8');
+    return { success: true };
+  } catch (err) {
+    console.error('[Vault] Error saving characters.json:', err);
+    return { success: false, error: err.message };
+  }
 });
 
 // -------------------------------------------------------------------
@@ -1302,16 +1330,17 @@ async function performTelemetrySync(extra = {}) {
     });
 
     const parsedUrl = new URL(BACKEND_PORTAL_URL);
-    const req = http.request({
+    const transport = parsedUrl.protocol === 'https:' ? https : http;
+    const req = transport.request({
       hostname: parsedUrl.hostname,
-      port: parsedUrl.port || 3001,
+      port: parsedUrl.port || (parsedUrl.protocol === 'https:' ? 443 : 80),
       path: parsedUrl.pathname,
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Content-Length': Buffer.byteLength(payload)
       },
-      timeout: 4000
+      timeout: 5000
     });
 
     req.on('error', () => {}); // Silently ignore if portal unreachable

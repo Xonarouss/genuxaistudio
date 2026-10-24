@@ -49,6 +49,10 @@ contextBridge.exposeInMainWorld('genuxNative', {
   getSettings: () => ipcRenderer.invoke('settings:get'),
   saveSettings: (settings) => ipcRenderer.invoke('settings:save', settings),
 
+  // Character Vault Persistence
+  getVaultCharacters: () => ipcRenderer.invoke('vault:getCharacters'),
+  saveVaultCharacters: (characters) => ipcRenderer.invoke('vault:saveCharacters', characters),
+
   // Engine Recasting Job Execution
   startRecastJob: (jobConfig) => ipcRenderer.invoke('engine:startRecastJob', jobConfig),
   cancelRecastJob: () => ipcRenderer.invoke('engine:cancelRecastJob'),

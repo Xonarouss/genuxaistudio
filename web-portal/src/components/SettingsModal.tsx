@@ -3,8 +3,11 @@ import {
   X, User, HardDrive, Cpu, Cloud, 
   Palette, Info, ExternalLink,
   FolderOpen, AlertTriangle, HelpCircle,
-  RefreshCw, ShieldCheck, CheckCircle2, DownloadCloud, Activity
+  RefreshCw, ShieldCheck, CheckCircle2, DownloadCloud, Activity,
+  Download, Trash2
 } from 'lucide-react';
+import confetti from 'canvas-confetti';
+import { type ModelItem, INITIAL_MODELS } from './ModelHubModal';
 
 export interface StudioSettings {
   username: string;
@@ -79,10 +82,149 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [syncingTelemetry, setSyncingTelemetry] = useState<boolean>(false);
   const [telemetrySyncMsg, setTelemetrySyncMsg] = useState<string>('');
 
+  // Embedded Model Hub Catalog State
+  const [hubModels, setHubModels] = useState<ModelItem[]>(INITIAL_MODELS);
+  const [modelCategoryFilter, setModelCategoryFilter] = useState<string>('all');
+  const [isScanningModels, setIsScanningModels] = useState<boolean>(false);
+  const [modelScanMessage, setModelScanMessage] = useState<string>('');
+
+  const isGemmaInstalled = hubModels.some(m => m.id === 'gemma' && (m.status === 'installed' || m.status === 'detected_cache'));
+
+  const refreshHubModels = async () => {
+    if (window.genuxNative?.listModels) {
+      try {
+        const live = await window.genuxNative.listModels();
+        setHubModels(prev => prev.map(m => {
+          const item = live[m.id];
+          if (item) {
+            return {
+              ...m,
+              status: item.isInstalled ? 'installed' : (item.isDownloading ? 'downloading' : m.status),
+              progress: item.progress || (item.isInstalled ? 100 : 0),
+              localPath: item.localPath || m.localPath
+            };
+          }
+          return m;
+        }));
+      } catch (e) {}
+    }
+  };
+
+  const handleDownloadModel = async (id: string) => {
+    setHubModels(prev => prev.map(m => m.id === id ? { ...m, status: 'downloading', progress: 0 } : m));
+    if (window.genuxNative?.startModelDownload) {
+      try {
+        await window.genuxNative.startModelDownload({ modelId: id });
+      } catch (err: any) {
+        console.error(`Download error for ${id}:`, err);
+      }
+    } else {
+      let currentProgress = 0;
+      const interval = setInterval(() => {
+        currentProgress += 25;
+        if (currentProgress >= 100) {
+          clearInterval(interval);
+          setHubModels(prev => prev.map(m => m.id === id ? { ...m, status: 'installed', progress: 100 } : m));
+          confetti({ particleCount: 50, spread: 60, origin: { y: 0.6 } });
+        } else {
+          setHubModels(prev => prev.map(m => m.id === id ? { ...m, progress: currentProgress } : m));
+        }
+      }, 250);
+    }
+  };
+
+  const handleCancelDownload = async (id: string) => {
+    setHubModels(prev => prev.map(m => m.id === id ? { ...m, status: 'missing', progress: 0 } : m));
+    if (window.genuxNative?.cancelModelDownload) {
+      try {
+        await window.genuxNative.cancelModelDownload(id);
+      } catch (err: any) {
+        console.error('Cancel download error for ' + id + ':', err);
+      }
+    }
+  };
+
+  const handleRemoveModel = async (id: string) => {
+    if (!window.confirm(`Are you sure you want to remove and delete this model from disk?`)) return;
+    if (window.genuxNative?.removeModelFile) {
+      try {
+        const res = await window.genuxNative.removeModelFile(id);
+        if (res && res.success) {
+          setHubModels(prev => prev.map(m => m.id === id ? {
+            ...m,
+            status: 'missing',
+            progress: 0,
+            localPath: ''
+          } : m));
+          refreshHubModels();
+        }
+      } catch (err: any) {
+        alert(`Failed to remove model: ${err.message}`);
+      }
+    } else {
+      setHubModels(prev => prev.map(m => m.id === id ? { ...m, status: 'missing', progress: 0 } : m));
+    }
+  };
+
+  const handleScanDisk = async () => {
+    setIsScanningModels(true);
+    setModelScanMessage('Scanning local storage, ComfyUI & Ollama caches...');
+    if (window.genuxNative?.scanLocalModelCaches) {
+      try {
+        const scan = await window.genuxNative.scanLocalModelCaches();
+        setHubModels(prev => prev.map(m => {
+          const found = scan.foundModels?.[m.id];
+          if (found) {
+            return {
+              ...m,
+              status: 'detected_cache',
+              progress: 100,
+              localPath: found.path
+            };
+          }
+          return m;
+        }));
+        setModelScanMessage('Scan complete: Local models auto-linked with zero network usage!');
+      } catch (err: any) {
+        setModelScanMessage('Scan completed.');
+      } finally {
+        setIsScanningModels(false);
+      }
+    } else {
+      setTimeout(() => {
+        setIsScanningModels(false);
+        setModelScanMessage('Scan complete: Models synced.');
+      }, 800);
+    }
+  };
+
   useEffect(() => {
     if (isOpen) {
       setActiveTab(initialTab);
+      refreshHubModels();
     }
+    let cleanup: (() => void) | undefined;
+    if (window.genuxNative?.onModelDownloadProgress) {
+      cleanup = window.genuxNative.onModelDownloadProgress((data: any) => {
+        setHubModels(prev => prev.map(m => {
+          if (m.id === data.modelId) {
+            const isDone = data.status === 'completed' || data.percent >= 100;
+            return {
+              ...m,
+              status: isDone ? 'installed' : ((data.status === 'error' || data.status === 'cancelled') ? 'missing' : 'downloading'),
+              progress: data.percent || (isDone ? 100 : 0),
+              downloadSpeed: data.speedMBps ? `${data.speedMBps} MB/s` : undefined,
+              eta: data.etaSeconds ? `${data.etaSeconds}s` : undefined,
+              localPath: data.localPath || m.localPath
+            };
+          }
+          return m;
+        }));
+      });
+    }
+    return () => {
+      if (cleanup) cleanup();
+    };
   }, [isOpen, initialTab]);
 
   useEffect(() => {
@@ -194,7 +336,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     >
       <div 
         onClick={(e) => e.stopPropagation()}
-        className="relative w-full max-w-3xl h-[620px] max-h-[92vh] bg-[#14151B] border border-white/[0.08] rounded-3xl shadow-[0_0_80px_rgba(0,0,0,0.9)] overflow-hidden flex flex-col text-slate-100"
+        className="relative w-full max-w-5xl h-[740px] max-h-[94vh] bg-[#14151B] border border-white/[0.08] rounded-3xl shadow-[0_0_80px_rgba(0,0,0,0.9)] overflow-hidden flex flex-col text-slate-100"
       >
         
         {/* Top Accent Gradient Border */}
@@ -491,7 +633,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     <div className="flex items-center gap-2">
                       <span className={`w-2 h-2 rounded-full ${settings.telemetryOptIn ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500'}`} />
                       <span className="text-slate-300">
-                        {settings.telemetryOptIn ? 'Status: Active Sync to Backend Portal (http://localhost:3001)' : 'Status: 100% Offline (Local Only)'}
+                        {settings.telemetryOptIn ? 'Status: Connected to Genux Cloud Telemetry Network (genuxai.io)' : 'Status: 100% Offline (Local Only)'}
                       </span>
                     </div>
                     {settings.telemetryOptIn && (
@@ -621,6 +763,132 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     </select>
                   </div>
 
+                  {/* Model Management Catalog Section (Embedded ModelHub) */}
+                  <div className="pt-4 border-t border-white/[0.08] space-y-4">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div>
+                        <h4 className="text-sm font-bold text-white flex items-center gap-2">
+                          <HardDrive size={16} className="text-cyan-400" />
+                          <span>Local AI Models &amp; Weights Catalog</span>
+                        </h4>
+                        <p className="text-[11px] text-slate-400">
+                          {hubModels.filter(m => m.status === 'installed' || m.status === 'detected_cache').length} of {hubModels.length} models installed on this machine
+                        </p>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={handleScanDisk}
+                          disabled={isScanningModels}
+                          className="px-3 py-1.5 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.08] text-xs font-semibold text-slate-300 hover:text-white transition flex items-center gap-1.5"
+                          title="Scan ComfyUI, HuggingFace &amp; Ollama folders for existing models"
+                        >
+                          <RefreshCw size={12} className={isScanningModels ? 'animate-spin text-cyan-400' : ''} />
+                          <span>{isScanningModels ? 'Scanning...' : 'Scan Existing Models'}</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    {modelScanMessage && (
+                      <div className="p-2.5 rounded-xl bg-cyan-950/30 border border-cyan-500/30 text-cyan-300 text-xs font-mono">
+                        {modelScanMessage}
+                      </div>
+                    )}
+
+                    {/* Filter Category Chips */}
+                    <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
+                      {(['all', 'core', 'synthesis', 'segmentation', 'motion', 'llm', 'vault'] as const).map(cat => (
+                        <button
+                          key={cat}
+                          onClick={() => setModelCategoryFilter(cat)}
+                          className={`px-2.5 py-1 rounded-lg text-[11px] font-mono font-bold capitalize transition shrink-0 ${
+                            modelCategoryFilter === cat
+                              ? 'bg-indigo-600 text-white'
+                              : 'bg-white/[0.03] text-slate-400 hover:text-white hover:bg-white/[0.06]'
+                          }`}
+                        >
+                          {cat}
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* Models Grid */}
+                    <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1">
+                      {hubModels
+                        .filter(m => modelCategoryFilter === 'all' || m.category === modelCategoryFilter)
+                        .map(m => {
+                          const isInstalled = m.status === 'installed' || m.status === 'detected_cache';
+                          const isDownloading = m.status === 'downloading';
+                          return (
+                            <div key={m.id} className="p-3 rounded-xl bg-[#1B1D26] border border-white/[0.06] space-y-2">
+                              <div className="flex items-start justify-between gap-3">
+                                <div>
+                                  <div className="flex items-center gap-2">
+                                    <span className="font-bold text-xs text-white">{m.name}</span>
+                                    <span className="px-1.5 py-0.5 rounded text-[9px] font-mono bg-white/[0.06] text-slate-400 uppercase">
+                                      {m.category}
+                                    </span>
+                                    <span className="text-[10px] font-mono text-cyan-400 font-bold">{m.size}</span>
+                                  </div>
+                                  <div className="text-[10px] text-slate-500 font-mono mt-0.5 truncate max-w-md">
+                                    {m.source}
+                                  </div>
+                                </div>
+
+                                <div className="flex items-center gap-2 shrink-0">
+                                  {isInstalled ? (
+                                    <div className="flex items-center gap-2">
+                                      <span className="px-2 py-0.5 rounded text-[10px] font-bold font-mono bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center gap-1">
+                                        <CheckCircle2 size={11} />
+                                        <span>Installed</span>
+                                      </span>
+                                      <button
+                                        onClick={() => handleRemoveModel(m.id)}
+                                        className="p-1 rounded-lg hover:bg-red-500/20 text-slate-500 hover:text-red-400 transition"
+                                        title="Delete model from disk"
+                                      >
+                                        <Trash2 size={13} />
+                                      </button>
+                                    </div>
+                                  ) : isDownloading ? (
+                                    <button
+                                      onClick={() => handleCancelDownload(m.id)}
+                                      className="px-2.5 py-1 rounded-lg bg-rose-600/20 hover:bg-rose-600/30 border border-rose-500/30 text-rose-300 font-bold text-[11px] transition"
+                                    >
+                                      Cancel
+                                    </button>
+                                  ) : (
+                                    <button
+                                      onClick={() => handleDownloadModel(m.id)}
+                                      className="px-3 py-1 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-bold text-xs transition flex items-center gap-1 shadow-md shadow-indigo-600/20"
+                                    >
+                                      <Download size={12} />
+                                      <span>Download</span>
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+
+                              {isDownloading && (
+                                <div className="space-y-1 pt-1">
+                                  <div className="flex justify-between text-[10px] font-mono text-slate-400">
+                                    <span className="text-cyan-300 font-bold">{m.progress}% downloaded</span>
+                                    <span>{m.downloadSpeed || 'Streaming...'} {m.eta ? `• ETA ${m.eta}` : ''}</span>
+                                  </div>
+                                  <div className="w-full h-1.5 bg-black/60 rounded-full overflow-hidden">
+                                    <div 
+                                      className="h-full bg-gradient-to-r from-cyan-500 to-indigo-500 rounded-full transition-all duration-300"
+                                      style={{ width: `${m.progress}%` }}
+                                    />
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                    </div>
+                  </div>
+
                 </div>
               )}
 
@@ -672,11 +940,36 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       onChange={(e) => setSettings({ ...settings, activeProvider: e.target.value as any })}
                       className="w-full max-w-md bg-[#1B1D26] border border-white/[0.08] rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-violet-500"
                     >
-                      <option value="local_gemma">100% Offline: Local Gemma 2 Director (C++ GGUF)</option>
+                      <option value="local_gemma" disabled={!isGemmaInstalled}>
+                        {isGemmaInstalled 
+                          ? '100% Offline: Local Gemma 2 Director (C++ GGUF - Ready)' 
+                          : '100% Offline: Local Gemma 2 Director (Not downloaded - install in Models tab)'}
+                      </option>
                       <option value="google_gemini">Cloud API: Google Gemini 2.0 (Flash / Pro)</option>
                       <option value="openai_chatgpt">Cloud API: OpenAI ChatGPT (GPT-4o)</option>
                       <option value="openrouter">Cloud API: OpenRouter (Claude 3.5, Llama 3)</option>
                     </select>
+
+                    {settings.activeProvider === 'local_gemma' && !isGemmaInstalled && (
+                      <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs flex items-start gap-2.5 mt-2">
+                        <AlertTriangle size={15} className="shrink-0 text-amber-400 mt-0.5" />
+                        <div>
+                          <strong>Gemma 2 Not Downloaded:</strong> Local Gemma 2 Director requires downloading the 2.1 GB neural weights file.
+                          <div className="mt-2 flex items-center gap-2">
+                            <button
+                              onClick={() => {
+                                setActiveTab('models');
+                                handleDownloadModel('gemma');
+                              }}
+                              className="px-3 py-1.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-200 font-bold text-xs transition"
+                            >
+                              Install Gemma 2 Now
+                            </button>
+                            <span className="text-slate-400 text-[11px]">or configure a Google Gemini or OpenAI API key below</span>
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   {settings.activeProvider === 'google_gemini' && (

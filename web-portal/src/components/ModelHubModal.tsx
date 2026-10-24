@@ -20,7 +20,7 @@ export interface ModelItem {
   trtOptimized: boolean;
 }
 
-const INITIAL_MODELS: ModelItem[] = [
+export const INITIAL_MODELS: ModelItem[] = [
   {
     id: 'binaries',
     name: 'yt-dlp + FFmpeg (NVDEC GPU Master Pipeline)',

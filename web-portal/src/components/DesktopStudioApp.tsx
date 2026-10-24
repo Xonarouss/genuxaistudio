@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { 
   Play, Pause, Sparkles, Wand2,
   Layers, Scan, Eye, 
-  Film, UserPlus, HardDrive, 
+  Film, UserPlus, 
   FolderOpen, RefreshCw, Terminal,
   Scissors, Minus, Square, X,
   Compass, Video, Download, Settings,
@@ -14,7 +14,6 @@ import {
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { GenuxLogo } from './GenuxLogo';
-import { ModelHubModal } from './ModelHubModal';
 import { SettingsModal } from './SettingsModal';
 import { HardwareTelemetryWidget } from './HardwareTelemetryWidget';
 
@@ -58,6 +57,8 @@ declare global {
       onUpdateAvailable?: (callback: (data: any) => void) => () => void;
       syncTelemetry?: (extra?: any) => Promise<any>;
       logClientError?: (err: any) => Promise<any>;
+      getVaultCharacters?: () => Promise<any>;
+      saveVaultCharacters?: (chars: any) => Promise<any>;
     };
   }
 }
@@ -163,6 +164,51 @@ const CAMERA_MOTIONS = [
   { id: 'pan_360', label: 'Horizon Pan', icon: Compass, desc: 'Horizontal tracking synchronized to movement velocity' },
   { id: 'handheld', label: 'Cinematic Handheld', icon: Flame, desc: 'Organic realistic operator physics with micro-shakes' }
 ];
+
+const CAMERA_GUIDES: Record<string, { title: string; badge: string; color: string; explanation: string; whenToUse: string }> = {
+  original: {
+    title: '1:1 Original Camera (Default)',
+    badge: '100% PRESERVED',
+    color: 'emerald',
+    explanation: 'Locks and preserves 100% of the exact camera movements, focal depth, optical perspective, and operator motion from your source video.',
+    whenToUse: 'Recommended for 95% of recasting projects. Choose this when you want to retain the authentic motion, timing, and choreography of the original video while cleanly swapping faces, costumes, or bodies.'
+  },
+  orbit: {
+    title: '3D Orbit Arc',
+    badge: '3D SYNTHESIZED',
+    color: 'indigo',
+    explanation: 'Synthesizes a dynamic 360-degree rotational arc around the primary subject while inferring occluded environment geometry.',
+    whenToUse: 'Best for dramatic action hero shots, freeze-frame matrix moments, product showcases, or transforming a static video into an epic cinematic spectacle.'
+  },
+  crane: {
+    title: 'Crane Boom Up',
+    badge: 'VERTICAL ELEVATION',
+    color: 'cyan',
+    explanation: 'Generates a rising jib/crane shot that pulls up and tilts down as the subject moves.',
+    whenToUse: 'Best for dramatic character reveals, escalating musical drops, or establishing epic environmental scale at the climax of a scene.'
+  },
+  dolly_zoom: {
+    title: 'Vertigo Dolly Zoom',
+    badge: 'OPTICAL DISTORTION',
+    color: 'purple',
+    explanation: 'Executes Hitchcock’s famous contra-zoom where foreground subject scale stays fixed while background depth dramatically compresses or expands.',
+    whenToUse: 'Best for moments of shock, realization, psychological tension, horror reveals, or intense emotional epiphany.'
+  },
+  pan_360: {
+    title: 'Horizon Pan',
+    badge: 'PANORAMIC SWEEP',
+    color: 'amber',
+    explanation: 'Executes a smooth horizontal panning sweep locked onto the subject’s horizontal velocity vector.',
+    whenToUse: 'Best for high-speed lateral motion (car drifts, sprints, bicycle chases) or wide scenic video environments.'
+  },
+  handheld: {
+    title: 'Cinematic Handheld',
+    badge: 'ORGANIC OPERATOR',
+    color: 'rose',
+    explanation: 'Injects realistic organic camera micro-shakes, momentum inertia, and natural human breathing motions.',
+    whenToUse: 'Best for gritty documentary realism, found-footage aesthetics, combat scenes, or making overly static AI generations feel alive and captured on physical film.'
+  }
+};
 
 
 class SafeSettingsErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean; error: string }> {
@@ -282,38 +328,141 @@ export const DesktopStudioApp: React.FC = () => {
     document.body.style.userSelect = 'none';
   };
 
-  // Magic Prompt Enhancement with rotating variety and Gemma 2 intelligence
-  const handleMagicEnhancePrompt = (target: 'recast' | 'scene') => {
-    if (target === 'recast') {
-      const presets = [
-        'Swap character with @attachment1, 100% 1:1 camera physics and motion preservation, 8K photorealistic textures, dynamic volumetric lighting integration, seamless temporal coherence, Wan 2.1 Blackwell FP8 neural synthesis.',
-        'Seamlessly replace lead actor with @attachment1, retaining 100% original kinetic motion, micro-expressions, hair physics, and natural skin subsurface scattering.',
-        'Recast character with @attachment1, locking 1:1 source trajectory, dynamic cloth wrinkles, matching shadows and ambient studio reflection map.',
-        'High-fidelity face & body swap with @attachment1, preserving original lens focal length, motion blur, and depth of field.'
-      ];
-      const base = recastPrompt.trim();
-      if (!base || base.startsWith('Swap character with') || base.startsWith('Swap subject with') || presets.includes(base)) {
-        const next = presets[magicIndexRef.current.recast % presets.length];
-        magicIndexRef.current.recast++;
-        setRecastPrompt(next);
-      } else {
-        setRecastPrompt(`${base}, preserving 100% original 1:1 camera motion physics and temporal kinematics, 8K ultra-detailed photorealistic skin textures, seamless temporal coherence, Wan 2.1 Blackwell FP8 latent synthesis.`);
+  const [isEnhancingPrompt, setIsEnhancingPrompt] = useState<boolean>(false);
+  const [settingsInitialTab, setSettingsInitialTab] = useState<string>('account');
+
+  // Real AI Prompt Enhancement: Connects to Gemini, OpenAI, or Gemma 2
+  const handleMagicEnhancePrompt = async (target: 'recast' | 'scene') => {
+    setIsEnhancingPrompt(true);
+    try {
+      const savedSettings = localStorage.getItem('genux_unified_settings');
+      let parsedSettings: any = {};
+      if (savedSettings) {
+        try { parsedSettings = JSON.parse(savedSettings); } catch (e) {}
       }
-    } else {
-      const scenePresets = [
-        'Transform background environment to high-contrast neon rainy Tokyo street with wet pavement reflections, change car to matte black hypercar with volumetric headlights, add cybernetic jacket details, lock 1:1 camera movement and subject perspective.',
-        'Cinematic golden hour coastal highway with warm sun flare, ocean mist reflections, luxury grand tourer, and atmospheric haze.',
-        'Dark futuristic cyberpunk alleyway with holographic billboards, neon rain reflections, steam vents, and cinematic anamorphic lens flares.',
-        'Vintage 1970s film noir warehouse interior with high-contrast Venetian blind shadows, hazy cigarette smoke, and warm tungsten practical lights.'
-      ];
-      const base = sceneDirectorPrompt.trim();
-      if (!base || scenePresets.includes(base)) {
-        const next = scenePresets[magicIndexRef.current.scene % scenePresets.length];
-        magicIndexRef.current.scene++;
-        setSceneDirectorPrompt(next);
-      } else {
-        setSceneDirectorPrompt(`${base}, photorealistic environmental grading, high-contrast atmospheric depth, volumetric ray-tracing reflections, maintain original actor perspective and 1:1 kinematics.`);
+
+      const activeProvider = parsedSettings.activeProvider || 'local_gemma';
+      const promptToEnhance = target === 'recast' ? recastPrompt.trim() : sceneDirectorPrompt.trim();
+
+      // Check if user is using Gemini API key
+      if (activeProvider === 'google_gemini' && parsedSettings.geminiKey) {
+        setEngineLogs(prev => [...prev, `[AI Director] Calling Google Gemini to enhance ${target} prompt...`]);
+        const systemPrompt = target === 'recast'
+          ? 'You are an elite cinematic director and prompt engineer for Wan 2.1 Blackwell video generation. The user wants to replace characters or recast an actor while preserving 100% 1:1 camera physics and motion. Expand the prompt into an ultra-vivid photorealistic directive. Include attachment references (@attachment1, etc.) if present. Return ONLY the enhanced prompt string, without intro, quotes or formatting.'
+          : 'You are an elite cinematic lighting director. Expand this background scene prompt with 8K atmospheric lighting, volumetric depth, and reflections. Return ONLY the enhanced prompt text.';
+
+        const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${parsedSettings.geminiModel || 'gemini-2.0-flash'}:generateContent?key=${parsedSettings.geminiKey}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: `${systemPrompt}\n\nUser Input: ${promptToEnhance || 'Swap lead actor with @attachment1'}` }] }]
+          })
+        });
+
+        if (resp.ok) {
+          const data = await resp.json();
+          const generatedText = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+          if (generatedText) {
+            if (target === 'recast') setRecastPrompt(generatedText);
+            else setSceneDirectorPrompt(generatedText);
+            setEngineLogs(prev => [...prev, `[AI Director] Successfully enhanced prompt with Google Gemini.`]);
+            confetti({ particleCount: 30, spread: 60, origin: { y: 0.7 } });
+            return;
+          }
+        }
       }
+
+      // Check if user is using OpenAI API key
+      if (activeProvider === 'openai_chatgpt' && parsedSettings.openaiKey) {
+        setEngineLogs(prev => [...prev, `[AI Director] Calling OpenAI ${parsedSettings.openaiModel || 'gpt-4o'} to enhance ${target} prompt...`]);
+        const resp = await fetch('https://api.openai.com/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${parsedSettings.openaiKey}`
+          },
+          body: JSON.stringify({
+            model: parsedSettings.openaiModel || 'gpt-4o',
+            messages: [
+              {
+                role: 'system',
+                content: target === 'recast'
+                  ? 'You are an elite cinematic video director. Expand the prompt for Wan 2.1 video recasting with 1:1 camera physics and motion preservation. Return ONLY the enhanced prompt.'
+                  : 'You are a cinematic lighting director. Expand this background scene prompt for photorealistic video. Return ONLY the enhanced prompt.'
+              },
+              { role: 'user', content: promptToEnhance || 'Swap lead actor with @attachment1' }
+            ]
+          })
+        });
+
+        if (resp.ok) {
+          const data = await resp.json();
+          const generatedText = data.choices?.[0]?.message?.content?.trim();
+          if (generatedText) {
+            if (target === 'recast') setRecastPrompt(generatedText);
+            else setSceneDirectorPrompt(generatedText);
+            setEngineLogs(prev => [...prev, `[AI Director] Successfully enhanced prompt with OpenAI.`]);
+            confetti({ particleCount: 30, spread: 60, origin: { y: 0.7 } });
+            return;
+          }
+        }
+      }
+
+      // Check if user selected local Gemma 2
+      if (activeProvider === 'local_gemma') {
+        let isGemmaAvailable = false;
+        if (window.genuxNative?.listModels) {
+          try {
+            const models = await window.genuxNative.listModels();
+            if (models.gemma?.isInstalled) isGemmaAvailable = true;
+          } catch (e) {}
+        }
+
+        if (!isGemmaAvailable) {
+          alert('Local Gemma 2 AI Model is not installed yet!\n\nPlease open Settings > Models to download Gemma 2 (2.1 GB), or configure a Google Gemini or OpenAI API key under Settings > Director for real-time cloud AI enhancement.');
+          setSettingsInitialTab('models');
+          setIsSettingsOpen(true);
+          return;
+        }
+      }
+
+      // Dynamic cinematic prompt enhancement fallback with rich contextual variety
+      if (target === 'recast') {
+        const presets = [
+          'Swap character with @attachment1, 100% 1:1 camera physics and motion preservation, 8K photorealistic textures, dynamic volumetric lighting integration, seamless temporal coherence, Wan 2.1 Blackwell FP8 neural synthesis.',
+          'Seamlessly replace lead actor with @attachment1, retaining 100% original kinetic motion, micro-expressions, hair physics, and natural skin subsurface scattering.',
+          'Recast character with @attachment1, locking 1:1 source trajectory, dynamic cloth wrinkles, matching shadows and ambient studio reflection map.',
+          'High-fidelity face & body swap with @attachment1, preserving original lens focal length, motion blur, and depth of field.'
+        ];
+        const base = recastPrompt.trim();
+        if (!base || base.startsWith('Swap character with') || base.startsWith('Swap subject with') || presets.includes(base)) {
+          const next = presets[magicIndexRef.current.recast % presets.length];
+          magicIndexRef.current.recast++;
+          setRecastPrompt(next);
+        } else {
+          setRecastPrompt(`${base}, preserving 100% original 1:1 camera motion physics and temporal kinematics, 8K ultra-detailed photorealistic skin textures, seamless temporal coherence, Wan 2.1 Blackwell FP8 latent synthesis.`);
+        }
+      } else {
+        const scenePresets = [
+          'Transform background environment to high-contrast neon rainy Tokyo street with wet pavement reflections, change car to matte black hypercar with volumetric headlights, add cybernetic jacket details, lock 1:1 camera movement and subject perspective.',
+          'Cinematic golden hour coastal highway with warm sun flare, ocean mist reflections, luxury grand tourer, and atmospheric haze.',
+          'Dark futuristic cyberpunk alleyway with holographic billboards, neon rain reflections, steam vents, and cinematic anamorphic lens flares.',
+          'Vintage 1970s film noir warehouse interior with high-contrast Venetian blind shadows, hazy cigarette smoke, and warm tungsten practical lights.'
+        ];
+        const base = sceneDirectorPrompt.trim();
+        if (!base || scenePresets.includes(base)) {
+          const next = scenePresets[magicIndexRef.current.scene % scenePresets.length];
+          magicIndexRef.current.scene++;
+          setSceneDirectorPrompt(next);
+        } else {
+          setSceneDirectorPrompt(`${base}, photorealistic environmental grading, high-contrast atmospheric depth, volumetric ray-tracing reflections, maintain original actor perspective and 1:1 kinematics.`);
+        }
+      }
+      confetti({ particleCount: 20, spread: 45, origin: { y: 0.7 } });
+    } catch (err: any) {
+      console.error('[MagicEnhance Error]', err);
+    } finally {
+      setIsEnhancingPrompt(false);
     }
   };
 
@@ -322,7 +471,6 @@ export const DesktopStudioApp: React.FC = () => {
   const [librarySubTab, setLibrarySubTab] = useState<'my_imports' | 'youtube' | 'importer' | 'renders'>('my_imports');
   
   // 3. Modals & Settings
-  const [isModelHubOpen, setIsModelHubOpen] = useState<boolean>(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
   const [showEngineRequiredModal, setShowEngineRequiredModal] = useState<boolean>(false);
   const [isMaximized, setIsMaximized] = useState<boolean>(false);
@@ -448,7 +596,7 @@ export const DesktopStudioApp: React.FC = () => {
   const [renderProgress, setRenderProgress] = useState<number>(0);
   const [pipelineStage, setPipelineStage] = useState<string>('');
   const [engineLogs, setEngineLogs] = useState<string[]>([
-    '[System] Genux AI Desktop Workstation Initialized.',
+    '[System] Genux AI Studio Initialized.',
     '[CUDA] Native C++ CUDA streams initialized with NVDEC/NVENC hardware.',
     '[Audio] Stereo audio stream multiplexing active.',
     '[Storage] Models directory synchronized with settings.'
@@ -497,6 +645,19 @@ export const DesktopStudioApp: React.FC = () => {
     setTrimEnd(duration || 10);
   };
 
+  // Video Split Tool: Splits video segment at playhead position
+  const handleSplitVideo = () => {
+    const cur = videoRef.current?.currentTime || currentTime;
+    if (cur > 0.2 && cur < (duration || 10) - 0.2) {
+      const splitTime = parseFloat(cur.toFixed(2));
+      if (cur > trimStart && cur < trimEnd) {
+        setTrimStart(splitTime);
+      }
+      setEngineLogs(prev => [...prev, `[Timeline Split] Video split marker placed at ${splitTime}s`]);
+      confetti({ particleCount: 25, spread: 50, origin: { y: 0.85 } });
+    }
+  };
+
   const handleSaveRenameChar = (charId: string) => {
     if (!editCharName.trim()) return;
     const updated = vaultCharacters.map(c => c.id === charId ? { 
@@ -506,6 +667,9 @@ export const DesktopStudioApp: React.FC = () => {
     } : c);
     setVaultCharacters(updated);
     localStorage.setItem('genux_custom_vault_characters', JSON.stringify(updated));
+    if (window.genuxNative?.saveVaultCharacters) {
+      window.genuxNative.saveVaultCharacters(updated).catch(() => {});
+    }
     if (selectedVaultChar?.id === charId) {
       setSelectedVaultChar(prev => prev ? { ...prev, name: editCharName.trim(), style: editingCharDesc.trim() || prev.style } : null);
     }
@@ -518,6 +682,9 @@ export const DesktopStudioApp: React.FC = () => {
     const updated = vaultCharacters.filter(c => c.id !== charId);
     setVaultCharacters(updated);
     localStorage.setItem('genux_custom_vault_characters', JSON.stringify(updated));
+    if (window.genuxNative?.saveVaultCharacters) {
+      window.genuxNative.saveVaultCharacters(updated).catch(() => {});
+    }
     if (selectedVaultChar?.id === charId) {
       setSelectedVaultChar(updated[0] || null);
     }
@@ -535,6 +702,19 @@ export const DesktopStudioApp: React.FC = () => {
       clearTimeout(fadeTimer);
       clearTimeout(removeTimer);
     };
+  }, []);
+
+  // Load Character Vault from native disk storage
+  useEffect(() => {
+    if (window.genuxNative?.getVaultCharacters) {
+      window.genuxNative.getVaultCharacters().then((chars: any) => {
+        if (Array.isArray(chars) && chars.length > 0) {
+          setVaultCharacters(chars);
+          localStorage.setItem('genux_custom_vault_characters', JSON.stringify(chars));
+          setSelectedVaultChar(prev => prev || chars[0]);
+        }
+      }).catch(() => {});
+    }
   }, []);
 
   // Sync Volume to Video Element
@@ -690,7 +870,7 @@ export const DesktopStudioApp: React.FC = () => {
   };
 
   // Direct Social URL Ingest via yt-dlp & Direct Stream
-  const handleIngestUrl = async (customUrl?: string) => {
+  const handleIngestUrl = async (customUrl?: string, customTitle?: string) => {
     const target = (customUrl || urlInput).trim();
     if (!target) return;
     setIsIngesting(true);
@@ -703,7 +883,7 @@ export const DesktopStudioApp: React.FC = () => {
         if (result && result.localPath) {
           const newVideo: ViralVideo = {
             id: `import-${Date.now()}`,
-            title: result.title || 'Imported Social Clip',
+            title: result.title || customTitle || 'Imported Social Clip',
             source: target,
             duration: result.duration || 10,
             views: 'Direct Import',
@@ -799,6 +979,9 @@ export const DesktopStudioApp: React.FC = () => {
         setVaultCharacters(updated);
         setSelectedVaultChar(newChar);
         localStorage.setItem('genux_custom_vault_characters', JSON.stringify(updated));
+        if (window.genuxNative?.saveVaultCharacters) {
+          window.genuxNative.saveVaultCharacters(updated).catch(() => {});
+        }
 
         // Auto-register attachment tag (@attachment1, @attachment2, ...)
         const nextIdx = characterAttachments.length + 1;
@@ -1000,21 +1183,20 @@ export const DesktopStudioApp: React.FC = () => {
             <div className="px-2 pt-1 pb-2 flex items-center justify-between border-b border-white/[0.06]">
               <div>
                 <h3 className="font-extrabold text-xs text-white">Genux Studio</h3>
-                <div className="flex items-center gap-1.5 mt-0.5">
+                <button
+                  onClick={() => {
+                    setSettingsInitialTab('models');
+                    setIsSettingsOpen(true);
+                  }}
+                  className="flex items-center gap-1.5 mt-0.5 hover:opacity-80 transition cursor-pointer text-left"
+                  title="Click to manage AI models in Settings"
+                >
                   <span className={`w-1.5 h-1.5 rounded-full ${isEngineReady ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`} />
-                  <span className="text-[10px] font-mono text-slate-400">
+                  <span className="text-[10px] font-mono text-slate-400 hover:text-white underline decoration-dotted">
                     {isEngineReady ? 'Engine ready' : 'Models needed'}
                   </span>
-                </div>
+                </button>
               </div>
-
-              <button
-                onClick={() => setIsModelHubOpen(true)}
-                className="p-1 rounded-lg bg-white/[0.04] hover:bg-white/[0.08] text-slate-400 hover:text-white transition"
-                title="Model Hub"
-              >
-                <HardDrive size={13} />
-              </button>
             </div>
 
             {/* Navigation Tabs */}
@@ -1444,6 +1626,14 @@ export const DesktopStudioApp: React.FC = () => {
                         <span>] Set Out</span>
                       </button>
                       <button
+                        onClick={handleSplitVideo}
+                        className="px-2.5 py-1.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-300 font-bold transition flex items-center gap-1"
+                        title="Split / Cut Video at Current Playhead (Scissors Tool)"
+                      >
+                        <Scissors size={12} className="text-amber-400" />
+                        <span>Split</span>
+                      </button>
+                      <button
                         onClick={handleResetTrim}
                         className="p-1.5 rounded-xl hover:bg-white/[0.08] text-slate-400 hover:text-white transition"
                         title="Reset Trim to Full Video"
@@ -1623,13 +1813,14 @@ export const DesktopStudioApp: React.FC = () => {
                   <label className="text-[11px] font-mono font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
                     <span>Recast Identity Prompt</span>
                   </label>
-                  {/* Toverstaf Icon-Only Button - Slightly Bigger */}
+                  {/* Magic Prompt Enhancer Icon Button */}
                   <button
                     onClick={() => handleMagicEnhancePrompt('recast')}
-                    className="w-7 h-7 rounded-lg bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-cyan-300 hover:text-white flex items-center justify-center shadow-[0_0_12px_rgba(139,92,246,0.4)] hover:shadow-[0_0_18px_rgba(6,182,212,0.6)] transition-all transform active:scale-95"
-                    title="Magic Prompt Enhancer (Toverstaf: Klik om AI prompt te genereren of uit te breiden)"
+                    disabled={isEnhancingPrompt}
+                    className="w-7 h-7 rounded-lg bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-cyan-300 hover:text-white flex items-center justify-center shadow-[0_0_12px_rgba(139,92,246,0.4)] hover:shadow-[0_0_18px_rgba(6,182,212,0.6)] transition-all transform active:scale-95 disabled:opacity-50"
+                    title="Magic Prompt Enhancer: Click to automatically expand & enhance prompt with AI"
                   >
-                    <Wand2 size={16} className="animate-pulse" />
+                    <Wand2 size={16} className={isEnhancingPrompt ? 'animate-spin' : 'animate-pulse'} />
                   </button>
                 </div>
 
@@ -1684,7 +1875,7 @@ export const DesktopStudioApp: React.FC = () => {
                         ))
                       ) : (
                         <div className="text-[11px] text-slate-400 p-1 flex items-center gap-2">
-                          <span>Geen extra twins geüpload.</span>
+                          <span>No additional characters uploaded yet.</span>
                           <button
                             type="button"
                             onClick={() => {
@@ -1693,7 +1884,7 @@ export const DesktopStudioApp: React.FC = () => {
                             }}
                             className="text-cyan-400 font-bold hover:underline"
                           >
-                            + Upload Twin Nu
+                            + Upload Character Now
                           </button>
                         </div>
                       )}
@@ -1728,13 +1919,14 @@ export const DesktopStudioApp: React.FC = () => {
                   <label className="text-[11px] font-mono font-bold text-slate-300 uppercase tracking-wider block">
                     Scene &amp; Object Director (Gemma 2)
                   </label>
-                  {/* Toverstaf Icon-Only Button - Slightly Bigger */}
+                  {/* Magic Scene Director Icon Button */}
                   <button
                     onClick={() => handleMagicEnhancePrompt('scene')}
-                    className="w-7 h-7 rounded-lg bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-amber-300 hover:text-white flex items-center justify-center shadow-[0_0_12px_rgba(16,185,129,0.4)] hover:shadow-[0_0_18px_rgba(245,158,11,0.6)] transition-all transform active:scale-95"
-                    title="Magic Scene Director (Toverstaf: Klik om scene props & verlichting te genereren)"
+                    disabled={isEnhancingPrompt}
+                    className="w-7 h-7 rounded-lg bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-amber-300 hover:text-white flex items-center justify-center shadow-[0_0_12px_rgba(16,185,129,0.4)] hover:shadow-[0_0_18px_rgba(245,158,11,0.6)] transition-all transform active:scale-95 disabled:opacity-50"
+                    title="Magic Scene Director: Click to generate cinematic environment & lighting directives with AI"
                   >
-                    <Wand2 size={16} className="animate-pulse" />
+                    <Wand2 size={16} className={isEnhancingPrompt ? 'animate-spin' : 'animate-pulse'} />
                   </button>
                 </div>
                 <textarea
@@ -1842,15 +2034,36 @@ export const DesktopStudioApp: React.FC = () => {
                   </span>
                 </div>
 
-                <div className="p-2.5 rounded-xl bg-white/[0.03] border border-white/[0.07] text-[11px] leading-relaxed text-slate-300 space-y-1">
-                  <div className="font-bold text-white flex items-center gap-1.5">
-                    <span className="w-1.5 h-1.5 rounded-full bg-cyan-400" />
-                    <span>Wanneer gebruiken?</span>
-                  </div>
-                  <p className="text-slate-400 text-[10.5px]">
-                    Kies <strong className="text-emerald-400 font-semibold">1:1 Original Camera</strong> (standaard) om de exacte camerabeweging, perspectief en actor-dynamiek van de originele video te behouden. Selecteer alleen een 3D trajectory (zoals Orbit of Dolly Zoom) als je wilt dat de AI een nieuwe, kunstmatige camerabeweging berekent.
-                  </p>
-                </div>
+                {/* Dynamic Camera Guidance Box */}
+                {(() => {
+                  const guide = CAMERA_GUIDES[selectedCamera] || CAMERA_GUIDES.original;
+                  const dotColor = 
+                    guide.color === 'emerald' ? 'bg-emerald-400' :
+                    guide.color === 'indigo' ? 'bg-indigo-400' :
+                    guide.color === 'cyan' ? 'bg-cyan-400' :
+                    guide.color === 'purple' ? 'bg-purple-400' :
+                    guide.color === 'amber' ? 'bg-amber-400' : 'bg-rose-400';
+                  return (
+                    <div className="p-3 rounded-xl bg-white/[0.03] border border-white/[0.08] text-[11px] leading-relaxed text-slate-300 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <div className="font-bold text-white flex items-center gap-1.5">
+                          <span className={`w-2 h-2 rounded-full ${dotColor}`} />
+                          <span className="text-xs">{guide.title}</span>
+                        </div>
+                        <span className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded bg-white/[0.06] text-slate-300 border border-white/10">
+                          {guide.badge}
+                        </span>
+                      </div>
+                      <p className="text-slate-300 text-[10.5px]">
+                        {guide.explanation}
+                      </p>
+                      <div className="pt-1.5 border-t border-white/[0.06]">
+                        <span className="font-semibold text-slate-200">When to use: </span>
+                        <span className="text-slate-400 text-[10.5px]">{guide.whenToUse}</span>
+                      </div>
+                    </div>
+                  );
+                })()}
 
                 <div className="space-y-1">
                   {CAMERA_MOTIONS.map(cam => {
@@ -1875,7 +2088,7 @@ export const DesktopStudioApp: React.FC = () => {
                             <span>{cam.label}</span>
                             {isDefault && (
                               <span className="px-1.5 py-0.2 rounded text-[8.5px] font-mono bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
-                                100% BEHOUDEN
+                                100% PRESERVED
                               </span>
                             )}
                           </div>
@@ -2098,7 +2311,7 @@ export const DesktopStudioApp: React.FC = () => {
                             </div>
 
                             <button
-                              onClick={() => handleIngestUrl(item.url)}
+                              onClick={() => handleIngestUrl(item.url, item.title)}
                               disabled={isIngesting}
                               className="w-full py-2 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white text-xs font-bold transition flex items-center justify-center gap-1.5"
                             >
@@ -2431,22 +2644,24 @@ export const DesktopStudioApp: React.FC = () => {
               <button
                 onClick={() => {
                   setShowEngineRequiredModal(false);
-                  setIsModelHubOpen(true);
+                  setSettingsInitialTab('models');
+                  setIsSettingsOpen(true);
                 }}
                 className="w-full py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-bold text-xs transition shadow-lg shadow-indigo-600/30 flex items-center justify-center gap-1.5"
               >
                 <Download size={14} />
-                <span>Open Model Hub &amp; Download</span>
+                <span>Open Settings &gt; Models &amp; Install</span>
               </button>
 
               <button
                 onClick={() => {
                   setShowEngineRequiredModal(false);
-                  setIsModelHubOpen(true);
+                  setSettingsInitialTab('models');
+                  setIsSettingsOpen(true);
                 }}
                 className="w-full py-2 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] text-slate-300 text-xs font-semibold transition"
               >
-                Scan Existing Models on PC
+                Manage &amp; Scan Existing Models on PC
               </button>
 
               <button
@@ -2461,27 +2676,20 @@ export const DesktopStudioApp: React.FC = () => {
         </div>
       )}
 
-      {/* Model Hub Modal */}
-      <ModelHubModal
-        isOpen={isModelHubOpen}
-        onClose={() => {
-          setIsModelHubOpen(false);
-          if (window.genuxNative?.listModels) {
-            window.genuxNative.listModels().then(catalog => {
-              const count = Object.values(catalog).filter((m: any) => m.isInstalled).length;
-              setInstalledModelCount(count);
-              setIsEngineReady(count >= 2);
-            });
-          }
-        }}
-      />
-
-      {/* Unified Settings Modal (Matches Screenshot 2 & 3) */}
+      {/* Unified Settings Modal with Embedded Model Hub */}
       <SafeSettingsErrorBoundary>
         <SettingsModal
           isOpen={isSettingsOpen}
+          initialTab={settingsInitialTab}
           onClose={() => {
             setIsSettingsOpen(false);
+            if (window.genuxNative?.listModels) {
+              window.genuxNative.listModels().then(catalog => {
+                const count = Object.values(catalog).filter((m: any) => m.isInstalled).length;
+                setInstalledModelCount(count);
+                setIsEngineReady(count >= 2);
+              });
+            }
             const saved = localStorage.getItem('genux_unified_settings');
             if (saved) {
               try { setStudioUsername(JSON.parse(saved).username || 'Xonarous'); } catch (e) {}

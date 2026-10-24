@@ -1,0 +1,8 @@
+# Robots.txt for Genux AI (https://genuxai.io)
+User-agent: *
+Allow: /
+Disallow: /admin/
+Disallow: /api/
+
+# Sitemaps
+Sitemap: https://genuxai.io/sitemap.xml

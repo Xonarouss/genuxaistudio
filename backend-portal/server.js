@@ -20,6 +20,19 @@ const WEB_DIST_DIR = fs.existsSync(path.join(__dirname, 'public', 'web'))
   ? path.join(__dirname, 'public', 'web')
   : path.join(__dirname, '..', 'web-portal', 'dist');
 
+// Host-based routing for admin.genuxai.io
+app.use((req, res, next) => {
+  const host = req.headers.host || '';
+  if (host.startsWith('admin.') && !req.path.startsWith('/api')) {
+    const candidate = path.join(ADMIN_PUBLIC_DIR, req.path === '/' ? 'index.html' : req.path);
+    if (fs.existsSync(candidate) && fs.statSync(candidate).isFile()) {
+      return res.sendFile(candidate);
+    }
+    return res.sendFile(path.join(ADMIN_PUBLIC_DIR, 'index.html'));
+  }
+  next();
+});
+
 // Serve Admin static assets under /admin
 app.use('/admin', express.static(ADMIN_PUBLIC_DIR));
 

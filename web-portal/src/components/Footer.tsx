@@ -23,7 +23,7 @@ export const Footer: React.FC<FooterProps> = ({
             <div className="flex items-center gap-3">
               <GenuxLogo size={28} />
               <span className="font-extrabold text-base tracking-tight text-slate-900">
-                GENUX AI <span className="text-indigo-600 font-mono text-xs">(GENUTS ENGINE)</span>
+                GENUX AI
               </span>
             </div>
             <p className="text-slate-600 leading-relaxed max-w-sm">

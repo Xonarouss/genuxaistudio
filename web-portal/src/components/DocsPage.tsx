@@ -3,7 +3,8 @@ import {
   Cpu, HardDrive, Sparkles, 
   ExternalLink, ChevronRight, Search, ShieldCheck, 
   Layers, Video, Zap, CheckCircle2, AlertTriangle, 
-  Download, ArrowLeft, Scissors, Globe, Trash2
+  Download, ArrowLeft, Scissors, Globe, Trash2,
+  Menu, X, FileText
 } from 'lucide-react';
 import { GenuxLogo } from './GenuxLogo';
 
@@ -18,6 +19,7 @@ export const DocsPage: React.FC<DocsPageProps> = ({
 }) => {
   const [activeSection, setActiveSection] = useState<string>('quickstart');
   const [searchQuery, setSearchQuery] = useState<string>('');
+  const [isMobileNavOpen, setIsMobileNavOpen] = useState<boolean>(false);
 
   const navCategories = [
     {
@@ -48,7 +50,8 @@ export const DocsPage: React.FC<DocsPageProps> = ({
       title: 'Support & Infrastructure',
       items: [
         { id: 'troubleshooting', label: '10. FAQ & Troubleshooting', icon: AlertTriangle },
-        { id: 'hosting', label: '11. VPS Deployment & Domain', icon: Globe }
+        { id: 'hosting', label: '11. VPS Deployment & Domain', icon: Globe },
+        { id: 'license', label: '12. AGPL-3.0 License', icon: FileText }
       ]
     }
   ];
@@ -57,23 +60,33 @@ export const DocsPage: React.FC<DocsPageProps> = ({
     <div className="min-h-screen bg-[#07090E] text-slate-100 flex flex-col font-sans selection:bg-indigo-500 selection:text-white">
       
       {/* Top Sticky Header */}
-      <header className="sticky top-0 z-40 h-16 bg-[#0B0E17]/95 border-b border-white/[0.08] backdrop-blur-md px-6 flex items-center justify-between">
-        <div className="flex items-center gap-4">
+      <header className="sticky top-0 z-40 h-16 bg-[#0B0E17]/95 border-b border-white/[0.08] backdrop-blur-md px-4 sm:px-6 flex items-center justify-between">
+        <div className="flex items-center gap-3 sm:gap-4">
+          {/* Mobile Menu Toggle Button */}
+          <button
+            onClick={() => setIsMobileNavOpen(!isMobileNavOpen)}
+            className="md:hidden p-2 rounded-xl bg-white/[0.05] border border-white/[0.1] text-slate-300 hover:text-white transition"
+            title="Toggle Docs Navigation Menu"
+          >
+            {isMobileNavOpen ? <X size={18} /> : <Menu size={18} />}
+          </button>
+
           <button
             onClick={onBackToPortal}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.08] text-xs font-semibold text-slate-300 hover:text-white transition"
           >
             <ArrowLeft size={14} />
-            <span>Website Portal</span>
+            <span className="hidden sm:inline">Website Portal</span>
+            <span className="sm:hidden">Portal</span>
           </button>
 
-          <div className="h-4 w-px bg-white/[0.1]" />
+          <div className="h-4 w-px bg-white/[0.1] hidden sm:block" />
 
           <div className="flex items-center gap-2.5">
             <GenuxLogo size={26} animated={true} />
             <div className="flex items-center gap-2">
               <span className="font-extrabold text-sm tracking-tight text-white font-mono">GENUX AI</span>
-              <span className="px-2 py-0.5 rounded-md text-[10px] font-mono font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+              <span className="hidden sm:inline-block px-2 py-0.5 rounded-md text-[10px] font-mono font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
                 OFFICIAL DOCS
               </span>
             </div>
@@ -81,7 +94,7 @@ export const DocsPage: React.FC<DocsPageProps> = ({
         </div>
 
         {/* Center Search Input */}
-        <div className="hidden md:flex items-center w-80 relative">
+        <div className="hidden lg:flex items-center w-72 xl:w-80 relative">
           <Search size={14} className="absolute left-3.5 text-slate-500" />
           <input
             type="text"
@@ -93,12 +106,12 @@ export const DocsPage: React.FC<DocsPageProps> = ({
         </div>
 
         {/* Header Right Actions */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 sm:gap-3">
           <a
             href="https://github.com/Xonarouss/genuxaistudio"
             target="_blank"
             rel="noreferrer"
-            className="text-xs text-slate-400 hover:text-white font-mono transition flex items-center gap-1"
+            className="hidden sm:flex text-xs text-slate-400 hover:text-white font-mono transition items-center gap-1"
           >
             <span>GitHub</span>
             <ExternalLink size={12} />
@@ -107,7 +120,7 @@ export const DocsPage: React.FC<DocsPageProps> = ({
             href="https://xonarous.nl"
             target="_blank"
             rel="noreferrer"
-            className="text-xs text-slate-400 hover:text-cyan-400 font-mono transition flex items-center gap-1"
+            className="hidden sm:flex text-xs text-slate-400 hover:text-cyan-400 font-mono transition items-center gap-1"
           >
             <span>Xonarous Inc</span>
             <ExternalLink size={12} />
@@ -123,6 +136,44 @@ export const DocsPage: React.FC<DocsPageProps> = ({
           )}
         </div>
       </header>
+
+      {/* Mobile Navigation Drawer */}
+      {isMobileNavOpen && (
+        <div className="md:hidden bg-[#0A0D15] border-b border-white/[0.1] px-5 py-4 space-y-4 max-h-[75vh] overflow-y-auto z-30">
+          <div className="text-xs font-mono font-bold text-indigo-400 uppercase tracking-wider mb-2">
+            Documentation Index
+          </div>
+          {navCategories.map((cat, idx) => (
+            <div key={idx} className="space-y-1">
+              <div className="px-2 text-[10px] font-mono font-bold uppercase tracking-wider text-slate-500">
+                {cat.title}
+              </div>
+              {cat.items.map(item => {
+                const Icon = item.icon;
+                const isActive = activeSection === item.id;
+                return (
+                  <button
+                    key={item.id}
+                    onClick={() => {
+                      setActiveSection(item.id);
+                      setIsMobileNavOpen(false);
+                      window.scrollTo({ top: 0, behavior: 'smooth' });
+                    }}
+                    className={`w-full text-left px-3 py-2 rounded-xl text-xs font-medium transition flex items-center gap-2.5 ${
+                      isActive 
+                        ? 'bg-indigo-600 text-white font-bold shadow-md shadow-indigo-600/30' 
+                        : 'text-slate-400 hover:text-white hover:bg-white/[0.04]'
+                    }`}
+                  >
+                    <Icon size={14} className={isActive ? 'text-white' : 'text-slate-500'} />
+                    <span className="truncate">{item.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Main Documentation Layout: Left Sticky Sidebar + Right Content */}
       <div className="flex-1 max-w-7xl w-full mx-auto flex">
@@ -765,6 +816,61 @@ export const DocsPage: React.FC<DocsPageProps> = ({
                 <div className="flex justify-between">
                   <span className="text-slate-400">Publisher:</span>
                   <span className="font-bold text-white">Xonarous Inc (xonarous.nl)</span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ========================================================= */}
+          {/* SECTION 12: AGPL-3.0 OPEN SOURCE LICENSE                  */}
+          {/* ========================================================= */}
+          {activeSection === 'license' && (
+            <div className="space-y-8 animate-fadeIn">
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 text-xs font-mono text-emerald-400 font-semibold">
+                  <span>LEGAL &amp; LICENSING</span>
+                  <ChevronRight size={12} />
+                  <span>FREE SOFTWARE FOUNDATION</span>
+                </div>
+                <h1 className="text-3xl sm:text-4xl font-extrabold text-white tracking-tight">
+                  GNU Affero General Public License v3.0 (AGPL-3.0)
+                </h1>
+                <p className="text-base text-slate-300 leading-relaxed">
+                  Genux AI is free, copyleft open-source software licensed under the <strong>GNU AGPLv3</strong>.
+                </p>
+              </div>
+
+              <div className="p-5 rounded-2xl bg-[#111522] border border-white/[0.08] space-y-4 text-xs leading-relaxed text-slate-300">
+                <div className="flex items-center gap-2 text-emerald-400 font-bold text-sm">
+                  <ShieldCheck size={18} />
+                  <span>Freedom, Transparency &amp; Local Privacy</span>
+                </div>
+                <p>
+                  Genux AI gives you the complete freedom to run the software locally, inspect every line of C++ and TypeScript source code, study the neural inference pipelines, and modify or adapt the codebase for your personal or commercial production workflows.
+                </p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-2">
+                  <div className="p-3.5 rounded-xl bg-black/40 border border-white/[0.06] space-y-1">
+                    <strong className="text-white block">Permissions:</strong>
+                    <ul className="text-slate-400 space-y-0.5 list-disc list-inside">
+                      <li>Commercial use without licensing royalties</li>
+                      <li>Modification &amp; private adaptation</li>
+                      <li>Distribution of binaries and source code</li>
+                      <li>Patent grant protection</li>
+                    </ul>
+                  </div>
+                  <div className="p-3.5 rounded-xl bg-black/40 border border-white/[0.06] space-y-1">
+                    <strong className="text-white block">Conditions:</strong>
+                    <ul className="text-slate-400 space-y-0.5 list-disc list-inside">
+                      <li>Source code disclosure for network deployments</li>
+                      <li>Preservation of copyright and license notices</li>
+                      <li>Same copyleft license (AGPL-3.0) on modified versions</li>
+                      <li>Attribution to original author: Xonarous Inc</li>
+                    </ul>
+                  </div>
+                </div>
+
+                <div className="pt-2 text-[11px] text-slate-500 font-mono">
+                  Full License Text: <a href="https://www.gnu.org/licenses/agpl-3.0.html" target="_blank" rel="noreferrer" className="text-indigo-400 hover:underline">https://www.gnu.org/licenses/agpl-3.0.html</a> • Copyright &copy; 2026 Xonarous Inc.
                 </div>
               </div>
             </div>
