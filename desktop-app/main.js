@@ -533,7 +533,7 @@ const MODEL_CATALOG = {
     name: 'DepthAnything-V2 Small Metric Estimator',
     filename: 'depth_anything_v2_vits.pth',
     // 98 MB — verified public 302→200 OK on HuggingFace
-    sizeBytes: 97,500000,
+    sizeBytes: 97500000,
     url: 'https://huggingface.co/depth-anything/Depth-Anything-V2-Small/resolve/main/depth_anything_v2_vits.pth',
     category: 'motion'
   },
