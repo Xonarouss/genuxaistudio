@@ -1,0 +1,40 @@
+# Dependencies
+node_modules/
+package-lock.json
+
+# Build outputs & packages
+*.exe
+dist/
+dist-ui/
+dist-package/
+build/
+bin/*.exe
+bin/*.dll
+bin/*.lib
+bin/*.pdb
+
+# AI Model weights & checkpoints (downloaded locally via Vault)
+*.pt
+*.safetensors
+*.bin
+*.onnx
+*.gguf
+*.pth
+*.tar.gz
+*.zip
+*.7z
+
+# Logs & cache
+*.log
+.cache/
+.system_generated/
+reference/
+temp/
+tmp/
+
+# IDE & OS
+.vscode/
+.idea/
+.vs/
+Thumbs.db
+Desktop.ini

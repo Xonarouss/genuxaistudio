@@ -1,0 +1,111 @@
+# PROJECT SPECIFICATION: GENUX AI (CODENAME: GENUTS ENGINE)
+## Local High-Performance Video Recasting, Motion Transfer & Viral Video Studio
+
+### 1. ROLE & ARCHITECTURAL MANDATE
+Act as a Principal C++ Systems Architect, Senior CUDA/TensorRT Engineer, and Lead UI/UX Frontend Developer. We are building **Genux AI** (codename: **Genuts AI**), a commercial-grade, 100% local Windows desktop application and companion web platform that rivals and surpasses **Higgsfield Genjutsu**.
+
+The system allows users to import any viral video (via YouTube, TikTok, Instagram Reels, or a built-in curated Viral Library), click any character or object in the video, and seamlessly replace ("Recast") them with persistent custom characters or objects while preserving 100% of the original motion, lighting, camera movement, facial micro-expressions, and physics.
+
+**CRITICAL EXECUTION RULE FOR ANTIGRAVITY IDE:**
+Do NOT write placeholder toy scripts, and do NOT stop after just generating source files. Whenever you build the Marketing Website (`/web-portal`) or Desktop UI (`/desktop-app`), you MUST automatically execute `npm install` and start the local development server (`npm run dev`) in the terminal so the user can immediately view and test the live application on `localhost`.
+
+---
+
+### 2. HARDWARE TARGET & 16GB VRAM OPTIMIZATION STRATEGY
+The core inference engine MUST be specifically engineered and tuned for **16GB VRAM GPUs (Primary Target: NVIDIA GeForce RTX 5080 - Blackwell Architecture)**:
+1. **Native FP8 / FP4 Quantization:** Utilize Blackwell Tensor Cores via **TensorRT 10.x** and **ONNX Runtime (CUDA Execution Provider)** using `FP8 (E4M3)` and `INT8/FP16` mixed precision so large video models fit comfortably within a strict 14.5 GB VRAM ceiling (leaving 1.5 GB headroom for Windows DWM and the UI).
+2. **Dynamic VRAM Offloading & Memory Pool:** Implement a custom C++ `VRAMManager` class using `cudaMallocAsync` and pinned host memory (`cudaMallocHost`). Automatically stream model weights between system RAM (DDR5) and VRAM over PCIe between pipeline stages (Decomposition -> LLM Conditioning -> Diffusion Synthesis -> Upscaling/Interpolation).
+3. **Tiled Spatio-Temporal VAE:** Implement tiled VAE encoding/decoding with temporal overlap blending to prevent Out-Of-Memory (OOM) spikes during 1080p/60fps video synthesis.
+4. **Zero-Copy Frame Piping:** Decode frames via hardware-accelerated **NVDEC (FFmpeg libavcodec)** directly into CUDA device pointers (`CUdeviceptr`), avoiding costly CPU-to-GPU memory copies.
+
+---
+
+### 3. SYSTEM ARCHITECTURE & TECH STACK
+
+#### A. Smart Local Model Scanner & Official Source Downloader (`ModelRegistry & AutoFetcher`)
+The application must NEVER require the user to manually hunt for model weights or CLI binaries in their browser:
+1. **Pre-Flight System & Disk Scanner (`ModelScanner.cpp`):**
+   * On startup, automatically scan the local application directory (`%LOCALAPPDATA%/GenuxAI/models`), custom user-defined model paths, and existing local AI caches (such as `~/.cache/huggingface/hub`, ComfyUI model directories, or Ollama/LM Studio GGUF folders) to detect if required models or tools are already installed.
+   * Verify existing files using fast header + SHA-256 checksum validation so existing models are symlinked/reused instantly without re-downloading.
+2. **Curated Official Manifest (`models_manifest.json`):**
+   * Maintain an official registry pointing strictly to verified upstream **GitHub Releases** and official **HuggingFace Repositories** for:
+     * **Core Binaries:** `yt-dlp.exe` (official GitHub release) & `ffmpeg-master-latest-win64-gpl` (official GitHub BtbN release).
+     * **Segmentation & Tracking:** `SAM 2.1 Large` (Official Meta GitHub release) + `ProPainter` (GitHub release for clean-plate inpainting).
+     * **Motion & Expression:** `DWPose` (OpenMMLab/GitHub), `DepthAnything-V2`, and `LivePortrait` (KlingTeam GitHub release).
+     * **Identity & Object Vault:** `InstantID`, `PuLID`, and `IP-Adapter-FaceID-PlusV2`.
+     * **Local LLM Director:** `Gemma 4` (GGUF `Q4_K_M` / `Q8_0` via official release + `llama.cpp` CUDA backend).
+     * **Video Synthesis & Interpolation:** `Wan 2.1 V2V 14B FP8` (16GB VRAM optimized) and `RIFE v4.22` (60fps frame interpolation).
+3. **In-App Multi-Threaded Downloader (`ModelDownloader.cpp` + UI Manager):**
+   * Built-in C++ async HTTP/HTTPS download manager (`libcurl` / WinHTTP) supporting multi-connection chunked downloads, HTTP Range pause/resume, automatic retry, real-time MB/s speed telemetry, ETA calculation, and automatic TensorRT `.engine` compilation upon completion.
+   * Dedicated **"Model Hub & Hardware Readiness"** screen inside the Desktop UI where users see green `"Installed & Verified"` badges for detected models, or a 1-click `"Download Missing Models"` button with granular progress bars.
+
+#### B. Native Core Engine (`/engine-cpp`)
+* **Language & Build:** C++20, CMake, Ninja, MSVC (Windows 11 SDK).
+* **AI & Inference Runtimes:** TensorRT 10.x, LibTorch / ONNX Runtime (CUDA), and `llama.cpp` (for local Gemma 4 inference).
+* **Local Database:** **SQLite3** to store the Character Vault, Object Vault, Installed Model paths, Project States, and the Viral Video Library metadata.
+* **IPC Bridge:** High-speed local **WebSocket + Shared Memory** server connecting the C++ engine to the Desktop UI for real-time 60 FPS video previewing and live download/render progress telemetry.
+
+#### C. The "Genjutsu" Local AI Pipeline (5-Stage Recast Engine)
+Design `PipelineOrchestrator.cpp` to execute the following stages modularly:
+1. **Stage 1: Interactive Segmentation & Clean Plate (`TrackerEngine`)**
+   * User clicks any person or object in frame 1; **SAM 2** tracks and masks the target across all frames.
+   * **ProPainter** inpaints the masked region to reconstruct a clean background plate.
+2. **Stage 2: Motion, Depth & Expression Extraction (`MotionExtractor`)**
+   * Extract body/hand/face skeletons via **DWPose**, temporal depth via **DepthAnything-V2**, and micro-expressions/lip-sync via **LivePortrait**.
+3. **Stage 3: Gemma 4 Director Agent (`GemmaDirector`)**
+   * Run **Gemma 4** locally to analyze scene lighting, camera movement, and user instructions, outputting structured JSON with optimized diffusion prompts and ControlNet conditioning weights.
+4. **Stage 4: Persistent Character & Object Vault (`CharacterVault`)**
+   * Users upload 1-5 photos of any person, character, or object and save them permanently into the Vault.
+   * Extract and serialize facial/structural embeddings (`InstantID` + `PuLID`) into `.gchar` vault records for instant zero-shot recasting across any future video.
+5. **Stage 5: Video Synthesis & Harmonization (`SynthesisEngine`)**
+   * Combine Clean Plate + Motion/Depth + Character Vault Embeddings + Gemma 4 Conditioning into **Wan 2.1 FP8**, followed by **RIFE** 60 FPS interpolation and automated color/lighting harmonization.
+
+#### D. Desktop Application UI (`/desktop-app`)
+* **Framework:** **React 19 + TypeScript + Vite + Tailwind CSS + Framer Motion + Lucide Icons** (packaged for Windows via Tauri v2 / Electron with native C++ bridge).
+* **Key Workspace Views:**
+  1. **Model Hub & Startup Scanner Drawer:** Shows real-time scan results of local disk paths, existing vs. missing models, official GitHub/HF source links, and interactive download progress bars.
+  2. **Viral Video Library & Social URL Importer:** Built-in catalog of trending viral templates + a 1-click **"Paste URL"** bar for YouTube, TikTok (watermark-free), and Instagram Reels with automatic scene-cut detection.
+  3. **Interactive Recast Studio (Main Viewport):** Dual/Split video canvas with interactive SAM 2 hover-and-click mask selection, bottom multi-track timeline, and right-hand Inspector with 1-Click Character Vault swapping, Gemma 4 Smart Prompt bar, and a live **RTX 5080 16GB VRAM Telemetry Gauge**.
+  4. **Character & Object Vault Manager:** Dedicated gallery to create, tag, preview, and manage saved characters and objects.
+
+---
+
+### 4. MARKETING WEBSITE & BRANDING (`/web-portal`)
+Build a complete, high-converting showcase and download website in `/web-portal`:
+* **Tech Stack:** React 19, Vite, TypeScript, Tailwind CSS, Framer Motion, Lucide React.
+* **Aesthetic:** **Pure Modern White Mode** (High-contrast minimalist luxury inspired by Linear, Apple, and Vercel Light Mode):
+  * Backgrounds: Pure Alabaster (`#FFFFFF` and `#F8FAFC`), subtle architectural grid lines, frosted glass navbar (`backdrop-blur-md bg-white/80`), crisp `1px solid #E2E8F0` borders.
+  * Typography: Tight-tracked bold headings (`#0F172A`) and clean slate body text (`#64748B`).
+  * Accent Palette: Electric Indigo (`#4F46E5`) to Cyber Violet (`#7C3AED`) gradients on primary CTAs, active indicators, and optical logo accents.
+* **Key Sections:**
+  1. **Sticky Glass Navbar:** `<GenuxLogo />`, Features, Viral Library, Model Hub, 16GB VRAM Benchmarks, and "Download for Windows (.exe)" button + "Launch Web Studio Demo" button (which switches into or opens the interactive Desktop Studio UI preview!).
+  2. **Hero Section:** Bold typography ("Recast Reality. 100% Local on Your GPU."), interactive **Before/After Video Recast Comparison Slider**, and Windows Installer download CTA with hardware badge (`Optimized for RTX 5080 / 16GB VRAM`).
+  3. **Interactive Feature Bento Grid:** Highlighting 1-Click SAM 2 Selection, Persistent Character Vault, YouTube/TikTok/IG Direct Importer, Local Gemma 4 AI Director, and the Built-In Official GitHub/HF Model Downloader.
+  4. **Performance & Architecture Section:** Visual comparison of C++20 + TensorRT FP8 local execution vs. slow cloud subscriptions ($0 monthly fees, zero queues, 100% local privacy).
+
+---
+
+### 5. LOGO DESIGN SPECIFICATION (INLINE SVG COMPONENT)
+Create a reusable `<GenuxLogo />` React SVG component:
+* **Concept:** A sleek, geometric fusion of an **Optical Illusion Aperture (inspired by Genjutsu precision)** morphing into a **3D Prism/Play Core**.
+* **Style:** Minimalist vector geometry with `#0F172A` structural lines and a vibrant `#4F46E5` -> `#9333EA` gradient core, fully scalable with subtle hover/pulse animations.
+
+---
+
+### 6. STEP-BY-STEP EXECUTION PLAN & LIVE LOCALHOST MANDATE
+Execute this project systematically without skipping code:
+
+1. **Step 1: Project Scaffolding**
+   * Create the workspace structure (`/web-portal`, `/desktop-app`, `/engine-cpp`).
+2. **Step 2: Build & Run the Marketing Website + Interactive Studio Preview (`/web-portal`)**
+   * Build the complete White-Mode Marketing Website AND embed an interactive **"Try Studio UI Preview"** mode (or connect `/desktop-app`) so the user can test BOTH the Marketing Website and the full Desktop App UI (including the Model Scanner/Downloader simulator, Viral Library, URL Importer, Character Vault, and Recast Viewport) directly in the browser.
+   * **MANDATORY TERMINAL ACTION:** Immediately run `npm install` and `npm run dev` inside `/web-portal`, verify there are zero build or TypeScript errors, and provide the live `http://localhost:5173` (or `localhost:3000`) preview URL.
+3. **Step 3: Build the Native C++20 Engine & Model Scanner/Downloader (`/engine-cpp`)**
+   * Write the production `CMakeLists.txt` and C++20 implementation files:
+     * `ModelScanner.hpp/.cpp` & `ModelDownloader.hpp/.cpp` (Local disk check, SHA-256 verification, and official GitHub/HuggingFace multi-threaded downloader).
+     * `VRAMManager.hpp/.cpp` (16GB VRAM pool & FP8 TensorRT lifecycle).
+     * `SocialIngestor.hpp/.cpp` (`yt-dlp` & `FFmpeg` NVDEC hardware decoder).
+     * `GemmaDirector.hpp/.cpp` (`llama.cpp` Gemma 4 conditioning engine).
+     * `RecastPipeline.hpp/.cpp` (SAM 2 -> DWPose/Depth/LivePortrait -> InstantID Character Vault -> Wan 2.1 FP8 synthesis).
+
+Begin immediately with **Step 1 and Step 2**, start the `localhost` dev server via the terminal so the live preview is running, and then proceed directly to **Step 3**.
