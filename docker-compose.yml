@@ -22,6 +22,16 @@ services:
     networks:
       - default
       - coolify
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.genux-http.rule=Host(`genuxai.io`) || Host(`www.genuxai.io`)"
+      - "traefik.http.routers.genux-http.entrypoints=http"
+      - "traefik.http.routers.genux-http.middlewares=redirect-to-https@file"
+      - "traefik.http.routers.genux-https.rule=Host(`genuxai.io`) || Host(`www.genuxai.io`)"
+      - "traefik.http.routers.genux-https.entrypoints=https"
+      - "traefik.http.routers.genux-https.tls=true"
+      - "traefik.http.routers.genux-https.tls.certresolver=letsencrypt"
+      - "traefik.http.services.genux-app.loadbalancer.server.port=3000"
 
 volumes:
   genux-data:
