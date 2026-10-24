@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { 
   Check, HardDrive, Download, FolderSearch, 
   CheckCircle2, ArrowRight, X,
-  FolderOpen, RefreshCw, Sparkles
+  FolderOpen, RefreshCw, Sparkles, ExternalLink
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { GenuxLogo } from './GenuxLogo';
@@ -29,7 +29,16 @@ const DEFAULT_MODELS: ModelItem[] = [
     id: 'wan21',
     name: 'Wan 2.1 Video Diffusion (FP8 Scaled E4M3)',
     subtext: 'Core latent video generation backbone optimized for 16GB VRAM (Blackwell GB203)',
-    sizeGb: 9.4,
+    sizeGb: 16.4,
+    required: true,
+    selected: true,
+    isInstalled: false
+  },
+  {
+    id: 'wan21_vae',
+    name: 'Wan 2.1 3D Video VAE Encoder/Decoder',
+    subtext: '3D causal video latent space encoder & decoder for photorealistic reconstruction',
+    sizeGb: 0.5,
     required: true,
     selected: true,
     isInstalled: false
@@ -398,14 +407,35 @@ export const ModelSetupGate: React.FC<ModelSetupGateProps> = ({
                   {/* Right: Actions */}
                   <div className="flex items-center gap-2 shrink-0">
                     {!isInstalled && (
-                      <button
-                        onClick={() => handleImportLocalFile(model.id)}
-                        title="Already have this file? Select from disk to link without downloading"
-                        className="p-2 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.08] text-slate-400 hover:text-white transition text-xs flex items-center gap-1.5"
-                      >
-                        <FolderOpen size={13} className="text-cyan-400" />
-                        <span className="text-[10px] font-mono hidden sm:inline">Browse File</span>
-                      </button>
+                      <>
+                        <button
+                          onClick={() => {
+                            const urls: Record<string, string> = {
+                              wan21: 'https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/diffusion_models/wan2.1_i2v_480p_14B_fp8_e4m3fn.safetensors',
+                              wan21_vae: 'https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/vae/wan_2.1_vae.safetensors',
+                              sam2: 'https://dl.fbaipublicfiles.com/segment_anything_2/092824/sam2.1_hiera_large.pt',
+                              dwpose: 'https://huggingface.co/yzd-v/DWPose/resolve/main/dw-ll_ucoco_384.onnx',
+                              depth: 'https://huggingface.co/depth-anything/Depth-Anything-V2-Small/resolve/main/depth_anything_v2_vits.pth',
+                              gemma: 'https://huggingface.co/bartowski/gemma-2-2b-it-GGUF/resolve/main/gemma-2-2b-it-Q4_K_M.gguf'
+                            };
+                            const target = urls[model.id];
+                            if (target) window.genuxNative?.openExternal(target);
+                          }}
+                          title="Download externally with Web Browser or IDM (Reddit / direct links)"
+                          className="p-2 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.08] text-slate-400 hover:text-cyan-400 transition text-xs flex items-center gap-1.5"
+                        >
+                          <ExternalLink size={13} className="text-cyan-400" />
+                          <span className="text-[10px] font-mono hidden sm:inline">Browser DL</span>
+                        </button>
+                        <button
+                          onClick={() => handleImportLocalFile(model.id)}
+                          title="Already have this file? Select from disk to link without downloading"
+                          className="p-2 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.08] text-slate-400 hover:text-white transition text-xs flex items-center gap-1.5"
+                        >
+                          <FolderOpen size={13} className="text-violet-400" />
+                          <span className="text-[10px] font-mono hidden sm:inline">Browse File</span>
+                        </button>
+                      </>
                     )}
                   </div>
                 </div>

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
   X, Download, CheckCircle2, RefreshCw, HardDrive, 
-  Zap, FolderOpen, ArrowDownToLine, Trash2
+  Zap, FolderOpen, ArrowDownToLine, Trash2, ExternalLink, Link, Copy
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
@@ -12,6 +12,7 @@ export interface ModelItem {
   source: string;
   sourceUrl: string;
   size: string;
+  directDownloadUrl?: string;
   status: 'installed' | 'detected_cache' | 'missing' | 'downloading';
   progress: number;
   downloadSpeed?: string;
@@ -27,6 +28,7 @@ export const INITIAL_MODELS: ModelItem[] = [
     category: 'core',
     source: 'Official yt-dlp & FFmpeg Gyan Build',
     sourceUrl: 'https://github.com/yt-dlp/yt-dlp',
+    directDownloadUrl: 'https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe',
     size: '142 MB',
     status: 'installed',
     progress: 100,
@@ -35,11 +37,11 @@ export const INITIAL_MODELS: ModelItem[] = [
   },
   {
     id: 'sam2',
-    // 898 MB — verified public download from dl.fbaipublicfiles.com
     name: 'Meta SAM 2.1 Hiera-Large Rotoscope Masker',
     category: 'segmentation',
     source: 'Meta AI Research / fbaipublicfiles.com',
     sourceUrl: 'https://github.com/facebookresearch/sam2',
+    directDownloadUrl: 'https://dl.fbaipublicfiles.com/segment_anything_2/092824/sam2.1_hiera_large.pt',
     size: '898 MB',
     status: 'missing',
     progress: 0,
@@ -48,11 +50,11 @@ export const INITIAL_MODELS: ModelItem[] = [
   },
   {
     id: 'dwpose',
-    // 420 MB — verified public
     name: 'DWPose 133-Keypoint Whole-Body Tracker',
     category: 'motion',
     source: 'OpenMMLab Official ONNX',
     sourceUrl: 'https://huggingface.co/yzd-v/DWPose',
+    directDownloadUrl: 'https://huggingface.co/yzd-v/DWPose/resolve/main/dw-ll_ucoco_384.onnx',
     size: '420 MB',
     status: 'missing',
     progress: 0,
@@ -61,11 +63,11 @@ export const INITIAL_MODELS: ModelItem[] = [
   },
   {
     id: 'depth',
-    // Switched to Small ViTS (98 MB) — 8x faster than Large, same API
     name: 'DepthAnything-V2 Small Metric Estimator (ViTS)',
     category: 'motion',
     source: 'Depth-Anything Research / HuggingFace',
     sourceUrl: 'https://huggingface.co/depth-anything/Depth-Anything-V2-Small',
+    directDownloadUrl: 'https://huggingface.co/depth-anything/Depth-Anything-V2-Small/resolve/main/depth_anything_v2_vits.pth',
     size: '98 MB',
     status: 'missing',
     progress: 0,
@@ -74,11 +76,11 @@ export const INITIAL_MODELS: ModelItem[] = [
   },
   {
     id: 'gemma',
-    // Switched from 9B gated model → 2B public bartowski Q4_K_M (1.6 GB)
     name: 'Gemma 2 2B Director Agent (Q4_K_M GGUF)',
     category: 'llm',
     source: 'Google DeepMind / bartowski (public mirror)',
     sourceUrl: 'https://huggingface.co/bartowski/gemma-2-2b-it-GGUF',
+    directDownloadUrl: 'https://huggingface.co/bartowski/gemma-2-2b-it-GGUF/resolve/main/gemma-2-2b-it-Q4_K_M.gguf',
     size: '1.6 GB',
     status: 'missing',
     progress: 0,
@@ -87,11 +89,11 @@ export const INITIAL_MODELS: ModelItem[] = [
   },
   {
     id: 'wan21',
-    // 16.4 GB — verified public 200 OK on Comfy-Org HuggingFace mirror
     name: 'Wan 2.1 14B FP8 Video Diffusion (i2v 480p)',
     category: 'synthesis',
     source: 'Wan-AI / Comfy-Org HuggingFace Repack',
     sourceUrl: 'https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged',
+    directDownloadUrl: 'https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/diffusion_models/wan2.1_i2v_480p_14B_fp8_e4m3fn.safetensors',
     size: '16.4 GB',
     status: 'missing',
     progress: 0,
@@ -99,12 +101,25 @@ export const INITIAL_MODELS: ModelItem[] = [
     trtOptimized: true,
   },
   {
+    id: 'wan21_vae',
+    name: 'Wan 2.1 3D Video VAE Encoder/Decoder',
+    category: 'synthesis',
+    source: 'Wan-AI / Comfy-Org HuggingFace Mirror',
+    sourceUrl: 'https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged',
+    directDownloadUrl: 'https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/vae/wan_2.1_vae.safetensors',
+    size: '242 MB',
+    status: 'missing',
+    progress: 0,
+    localPath: '~/.cache/genux/models/wan_2.1_vae.safetensors',
+    trtOptimized: true,
+  },
+  {
     id: 'ltxvideo',
-    // 2.8 GB — verified public 302→200 on HuggingFace
     name: 'LTX-Video 2B v0.9.5 Realtime Latent Backbone',
     category: 'synthesis',
     source: 'Lightricks / HuggingFace',
     sourceUrl: 'https://huggingface.co/Lightricks/LTX-Video',
+    directDownloadUrl: 'https://huggingface.co/Lightricks/LTX-Video/resolve/main/ltx-video-2b-v0.9.5.safetensors',
     size: '2.8 GB',
     status: 'missing',
     progress: 0,
@@ -113,11 +128,11 @@ export const INITIAL_MODELS: ModelItem[] = [
   },
   {
     id: 'pulid',
-    // 1.25 GB — verified public 302→200 on HuggingFace
     name: 'InstantID Character Identity Anchor (IP-Adapter)',
     category: 'vault',
     source: 'InstantX Team / HuggingFace',
     sourceUrl: 'https://huggingface.co/InstantX/InstantID',
+    directDownloadUrl: 'https://huggingface.co/InstantX/InstantID/resolve/main/ip-adapter.bin',
     size: '1.25 GB',
     status: 'missing',
     progress: 0,
@@ -126,12 +141,11 @@ export const INITIAL_MODELS: ModelItem[] = [
   },
   {
     id: 'latentsync',
-    // 1.7 GB — ByteDance LatentSync 1.5 UNet checkpoint
-    // OPTIONAL: enables precision audio-driven lip sync on recasted characters
     name: 'LatentSync 1.5 — Precision Lip Sync (ByteDance 2025)',
     category: 'lipsync',
     source: 'ByteDance Research / HuggingFace',
     sourceUrl: 'https://huggingface.co/ByteDance/LatentSync-1.5',
+    directDownloadUrl: 'https://huggingface.co/ByteDance/LatentSync-1.5/resolve/main/latentsync_unet.pt',
     size: '1.7 GB',
     status: 'missing',
     progress: 0,
@@ -144,6 +158,7 @@ export const INITIAL_MODELS: ModelItem[] = [
     category: 'lipsync',
     source: 'Nekochu / HuggingFace Mirror',
     sourceUrl: 'https://huggingface.co/Nekochu/Wav2Lip',
+    directDownloadUrl: 'https://huggingface.co/Nekochu/Wav2Lip/resolve/main/wav2lip_gan.pth',
     size: '435 MB',
     status: 'missing',
     progress: 0,
@@ -480,8 +495,33 @@ export const ModelHubModal: React.FC<ModelHubModalProps> = ({ isOpen, onClose })
                       )}
                     </div>
 
-                    <div className="text-[11px] text-slate-400 mt-1 flex items-center gap-2">
+                    <div className="text-[11px] text-slate-400 mt-1 flex items-center gap-2 flex-wrap">
                       <span>Source: {model.source}</span>
+                      <span>•</span>
+                      <button
+                        onClick={() => window.genuxNative?.openExternal(model.sourceUrl)}
+                        className="text-cyan-400 hover:text-cyan-300 transition flex items-center gap-1 hover:underline cursor-pointer"
+                        title="Open Official Repository in Browser"
+                      >
+                        <ExternalLink size={10} />
+                        <span>Repo</span>
+                      </button>
+                      {model.directDownloadUrl && (
+                        <>
+                          <span>•</span>
+                          <button
+                            onClick={() => {
+                              navigator.clipboard.writeText(model.directDownloadUrl!);
+                              alert(`Direct download URL copied to clipboard:\n${model.directDownloadUrl}`);
+                            }}
+                            className="text-violet-400 hover:text-violet-300 transition flex items-center gap-1 hover:underline cursor-pointer"
+                            title="Copy direct download link to clipboard for browser or IDM"
+                          >
+                            <Copy size={10} />
+                            <span>Copy Link</span>
+                          </button>
+                        </>
+                      )}
                       <span>•</span>
                       <span className="font-mono text-slate-500 truncate max-w-sm">{model.localPath}</span>
                     </div>
@@ -540,13 +580,21 @@ export const ModelHubModal: React.FC<ModelHubModalProps> = ({ isOpen, onClose })
                         </button>
                       </div>
                     ) : (
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          onClick={() => window.genuxNative?.openExternal(model.directDownloadUrl || model.sourceUrl)}
+                          title="Open direct file download in your Web Browser or External Download Manager (IDM, Free Download Manager, etc.)"
+                          className="px-2.5 py-1.5 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.08] text-slate-300 hover:text-cyan-400 transition text-xs flex items-center gap-1"
+                        >
+                          <ExternalLink size={12} className="text-cyan-400" />
+                          <span className="font-mono text-[10px]">Browser DL</span>
+                        </button>
                         <button
                           onClick={() => handleImportFile(model.id)}
                           title="Select an already downloaded file from your disk"
-                          className="px-3 py-1.5 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.08] text-slate-300 hover:text-white transition text-xs flex items-center gap-1.5"
+                          className="px-2.5 py-1.5 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.08] text-slate-300 hover:text-white transition text-xs flex items-center gap-1.5"
                         >
-                          <FolderOpen size={13} className="text-cyan-400" />
+                          <FolderOpen size={12} className="text-violet-400" />
                           <span className="font-mono text-[10px]">Browse Disk</span>
                         </button>
                         <button

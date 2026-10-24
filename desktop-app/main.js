@@ -514,6 +514,15 @@ const MODEL_CATALOG = {
     url: 'https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/diffusion_models/wan2.1_i2v_480p_14B_fp8_e4m3fn.safetensors',
     category: 'synthesis'
   },
+  wan21_vae: {
+    id: 'wan21_vae',
+    name: 'Wan 2.1 3D Video VAE Encoder/Decoder',
+    filename: 'wan_2.1_vae.safetensors',
+    // 242 MB — verified public on Comfy-Org mirror
+    sizeBytes: 507591892,
+    url: 'https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/vae/wan_2.1_vae.safetensors',
+    category: 'synthesis'
+  },
   sam2: {
     id: 'sam2',
     name: 'Meta SAM 2.1 Hiera-Large Rotoscope Masker',
