@@ -1,6 +1,7 @@
 version: '3.8'
 
 services:
+  # Main Web Portal (genuxai.io, docs.genuxai.io)
   app:
     build:
       context: .
@@ -24,17 +25,51 @@ services:
       - coolify
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.genux-http.rule=Host(`genuxai.io`) || Host(`www.genuxai.io`) || Host(`docs.genuxai.io`) || Host(`admin.genuxai.io`)"
+      - "traefik.http.routers.genux-http.rule=Host(`genuxai.io`) || Host(`www.genuxai.io`) || Host(`docs.genuxai.io`)"
       - "traefik.http.routers.genux-http.entrypoints=http"
       - "traefik.http.routers.genux-http.middlewares=redirect-to-https@file"
-      - "traefik.http.routers.genux-https.rule=Host(`genuxai.io`) || Host(`www.genuxai.io`) || Host(`docs.genuxai.io`) || Host(`admin.genuxai.io`)"
+      - "traefik.http.routers.genux-https.rule=Host(`genuxai.io`) || Host(`www.genuxai.io`) || Host(`docs.genuxai.io`)"
       - "traefik.http.routers.genux-https.entrypoints=https"
       - "traefik.http.routers.genux-https.tls=true"
       - "traefik.http.routers.genux-https.tls.certresolver=letsencrypt"
       - "traefik.http.services.genux-app.loadbalancer.server.port=3000"
 
+  # Backend Admin & Telemetry Server (admin.genuxai.io)
+  backend:
+    build:
+      context: ./backend-portal
+      dockerfile: Dockerfile
+    image: genux-backend:latest
+    container_name: genux-backend
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    expose:
+      - "3001"
+    environment:
+      - PORT=3001
+      - HOST=0.0.0.0
+      - NODE_ENV=production
+      - JWT_SECRET=genux-admin-super-secure-key-2026
+    volumes:
+      - genux-backend-data:/app/data
+    networks:
+      - default
+      - coolify
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.genux-admin-http.rule=Host(`admin.genuxai.io`)"
+      - "traefik.http.routers.genux-admin-http.entrypoints=http"
+      - "traefik.http.routers.genux-admin-http.middlewares=redirect-to-https@file"
+      - "traefik.http.routers.genux-admin-https.rule=Host(`admin.genuxai.io`)"
+      - "traefik.http.routers.genux-admin-https.entrypoints=https"
+      - "traefik.http.routers.genux-admin-https.tls=true"
+      - "traefik.http.routers.genux-admin-https.tls.certresolver=letsencrypt"
+      - "traefik.http.services.genux-backend.loadbalancer.server.port=3001"
+
 volumes:
   genux-data:
+  genux-backend-data:
 
 networks:
   default:

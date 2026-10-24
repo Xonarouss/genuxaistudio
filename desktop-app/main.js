@@ -6,9 +6,11 @@ const https = require('https');
 const http = require('http');
 const { spawn } = require('child_process');
 
-const APP_VERSION = '1.0.4';
+const APP_VERSION = '1.0.5';
 const GITHUB_REPO = 'Xonarouss/genuxaistudio';
-const BACKEND_PORTAL_URL = 'https://genuxai.io/api/telemetry';
+// Backend API — admin.genuxai.io runs the backend-portal service with telemetry + admin dashboard
+const BACKEND_PORTAL_URL = 'https://admin.genuxai.io/api/telemetry';
+const ADMIN_METRICS_URL  = 'https://admin.genuxai.io/api/admin';
 
 let mainWindow = null;
 let activeEngineChild = null;
