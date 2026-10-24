@@ -1,13 +1,15 @@
 import React from 'react';
-import { Download, BookOpen, CheckCircle2, Cpu, ExternalLink } from 'lucide-react';
+import { Download, BookOpen, CheckCircle2, Cpu } from 'lucide-react';
 import { BeforeAfterSlider } from './BeforeAfterSlider';
 
 interface HeroSectionProps {
   onDownloadExe: () => void;
+  onOpenDocs?: () => void;
 }
 
 export const HeroSection: React.FC<HeroSectionProps> = ({ 
-  onDownloadExe 
+  onDownloadExe,
+  onOpenDocs
 }) => {
   return (
     <section className="relative pt-12 pb-20 md:pt-16 md:pb-24 overflow-hidden bg-white">
@@ -48,22 +50,19 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
         <div className="flex flex-col sm:flex-row items-center justify-center gap-3.5 mb-12">
           <button
             onClick={onDownloadExe}
-            className="w-full sm:w-auto inline-flex items-center justify-center gap-2.5 px-7 py-3.5 rounded-xl text-sm font-bold bg-slate-900 text-white hover:bg-slate-800 transition-all shadow-md hover:shadow-xl transform active:scale-98"
+            className="w-full sm:w-auto inline-flex items-center justify-center gap-2.5 px-7 py-3.5 rounded-xl text-sm font-bold bg-slate-900 text-white hover:bg-slate-800 transition-all shadow-md hover:shadow-xl transform active:scale-98 cursor-pointer"
           >
             <Download className="w-4 h-4" />
             <span>Download for Windows (.exe)</span>
           </button>
 
-          <a
-            href="https://docs.genuxai.io"
-            target="_blank"
-            rel="noreferrer"
-            className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl text-sm font-bold bg-white text-slate-800 hover:bg-slate-50 border border-slate-200 transition-all shadow-xs hover:shadow-md"
+          <button
+            onClick={onOpenDocs}
+            className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl text-sm font-bold bg-white text-slate-800 hover:bg-slate-50 border border-slate-200 transition-all shadow-xs hover:shadow-md cursor-pointer"
           >
             <BookOpen className="w-4 h-4 text-indigo-600" />
-            <span>Documentation (docs.genuxai.io)</span>
-            <ExternalLink className="w-3 h-3 text-slate-400" />
-          </a>
+            <span>Documentation</span>
+          </button>
         </div>
 
         {/* Trust & Performance Badges */}

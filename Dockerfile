@@ -1,28 +1,38 @@
-# Multi-stage Dockerfile for Genux AI Website & Docs Portal
-# Optimized for 1-Click Deployment on Coolify
-FROM node:20-alpine AS build
+# =======================================================
+# Genux AI Unified Production Container for Coolify
+# Serves: Website + Docs Portal + Admin 2FA + Telemetry API
+# All in ONE single lightweight container on Port 3000
+# =======================================================
 
-WORKDIR /app
-
-# Copy web-portal package files and install
+# Stage 1: Build Frontend Website & Docs
+FROM node:20-alpine AS web-builder
+WORKDIR /build/web-portal
 COPY web-portal/package*.json ./
 RUN npm ci
-
-# Copy web-portal source files
 COPY web-portal/ ./
-
-# Build production bundle
 RUN npm run build
 
-# Production Stage with Nginx
-FROM nginx:alpine
+# Stage 2: Production Server
+FROM node:20-alpine AS runner
+WORKDIR /app
 
-# Copy built assets to Nginx html directory
-COPY --from=build /app/dist /usr/share/nginx/html
+ENV NODE_ENV=production
+ENV PORT=3000
 
-# Copy custom Nginx configuration
-COPY web-portal/nginx.conf /etc/nginx/conf.d/default.conf
+# Install Backend Dependencies
+COPY backend-portal/package*.json ./
+RUN npm ci --only=production
 
-EXPOSE 80
+# Copy Backend Core
+COPY backend-portal/ ./
 
-CMD ["nginx", "-g", "daemon off;"]
+# Copy Built Frontend Website & Docs from Stage 1 into public/web
+COPY --from=web-builder /build/web-portal/dist ./public/web
+
+# Expose Port 3000 for Coolify Application Router
+EXPOSE 3000
+
+# Volume for Persistent 2FA Admin Credentials & Telemetry Database
+VOLUME ["/app/data"]
+
+CMD ["node", "server.js"]

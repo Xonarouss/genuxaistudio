@@ -42,6 +42,7 @@ declare global {
       cancelModelDownload?: (modelId: string) => Promise<boolean>;
       listModels?: () => Promise<any>;
       importLocalModelFile?: (modelId: string) => Promise<any>;
+      removeModelFile?: (modelId: string) => Promise<any>;
       onModelDownloadProgress?: (callback: (data: any) => void) => () => void;
       importVideoUrl?: (url: string) => Promise<any>;
       searchYouTube?: (query: string) => Promise<any[]>;
@@ -154,36 +155,6 @@ const DEFAULT_VIRAL_VIDEOS: ViralVideo[] = [
   }
 ];
 
-const INITIAL_VAULT: VaultCharacter[] = [
-  {
-    id: 'char-1',
-    name: 'Kaelen Vance',
-    tag: '#CyberAgent',
-    avatarColor: 'from-violet-500 to-indigo-800',
-    style: 'Augmented cybernetic operative with obsidian trenchcoat',
-    gcharSize: '24.2 MB',
-    similarityScore: 99.4
-  },
-  {
-    id: 'char-2',
-    name: 'Aria Thorne',
-    tag: '#NeonPilot',
-    avatarColor: 'from-pink-500 to-purple-800',
-    style: 'Orbital racing suit with biometric heads-up display',
-    gcharSize: '19.8 MB',
-    similarityScore: 99.7
-  },
-  {
-    id: 'char-3',
-    name: 'Soren Ward',
-    tag: '#StealthSamurai',
-    avatarColor: 'from-amber-500 to-orange-800',
-    style: 'Modernized carbon-weave armor and ceremonial mantle',
-    gcharSize: '22.1 MB',
-    similarityScore: 99.1
-  }
-];
-
 const CAMERA_MOTIONS = [
   { id: 'orbit', label: '3D Orbit Arc', icon: Move3d, desc: 'Dynamic 360 orbital camera motion around subject' },
   { id: 'crane', label: 'Crane Boom Up', icon: Camera, desc: 'Vertical crane elevation tracking upward with cinematic tilt' },
@@ -197,17 +168,26 @@ export const DesktopStudioApp: React.FC = () => {
   const [showStartupSplash, setShowStartupSplash] = useState<boolean>(true);
   const [splashFadeOut, setSplashFadeOut] = useState<boolean>(false);
 
-  // 2. Navigation & Sidebar
+  // 2. Navigation & Sidebar (Viral trends removed, defaults to my_imports)
   const [activeNav, setActiveNav] = useState<'create' | 'library' | 'twins' | 'console'>('create');
-  const [librarySubTab, setLibrarySubTab] = useState<'trending' | 'my_imports' | 'youtube' | 'importer' | 'renders'>('trending');
+  const [librarySubTab, setLibrarySubTab] = useState<'my_imports' | 'youtube' | 'importer' | 'renders'>('my_imports');
   
-  // 3. Modals
+  // 3. Modals & Settings
   const [isModelHubOpen, setIsModelHubOpen] = useState<boolean>(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
   const [showEngineRequiredModal, setShowEngineRequiredModal] = useState<boolean>(false);
   const [isMaximized, setIsMaximized] = useState<boolean>(false);
   const [showFirstLaunchTelemetryModal, setShowFirstLaunchTelemetryModal] = useState<boolean>(false);
   const [availableUpdateNotification, setAvailableUpdateNotification] = useState<any>(null);
+
+  // Dynamic Studio Username synced with Settings
+  const [studioUsername, setStudioUsername] = useState<string>(() => {
+    const saved = localStorage.getItem('genux_unified_settings');
+    if (saved) {
+      try { return JSON.parse(saved).username || 'Xonarous'; } catch (e) {}
+    }
+    return 'Xonarous';
+  });
 
   // 4. Engine & Model Status
   const [installedModelCount, setInstalledModelCount] = useState<number>(0);
@@ -218,11 +198,55 @@ export const DesktopStudioApp: React.FC = () => {
     profile: '16GB Native Profile'
   });
 
-  // 5. Studio Videos & Characters
-  const [viralVideos] = useState<ViralVideo[]>(DEFAULT_VIRAL_VIDEOS);
-  const [selectedVideo, setSelectedVideo] = useState<ViralVideo>(DEFAULT_VIRAL_VIDEOS[0]);
-  const [selectedVaultChar, setSelectedVaultChar] = useState<VaultCharacter>(INITIAL_VAULT[0]);
-  const [vaultCharacters, setVaultCharacters] = useState<VaultCharacter[]>(INITIAL_VAULT);
+  // 5. Studio Videos & Characters (Persisted in localStorage with NO placeholders)
+  const [selectedVideo, setSelectedVideo] = useState<ViralVideo>(() => {
+    const savedImports = localStorage.getItem('genux_user_imported_videos');
+    if (savedImports) {
+      try {
+        const parsed = JSON.parse(savedImports);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed[0];
+      } catch (e) {}
+    }
+    return DEFAULT_VIRAL_VIDEOS[0];
+  });
+
+  const [vaultCharacters, setVaultCharacters] = useState<VaultCharacter[]>(() => {
+    const saved = localStorage.getItem('genux_custom_vault_characters');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) return parsed;
+      } catch (e) {}
+    }
+    return [];
+  });
+
+  const [selectedVaultChar, setSelectedVaultChar] = useState<VaultCharacter | null>(() => {
+    const saved = localStorage.getItem('genux_custom_vault_characters');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed[0];
+      } catch (e) {}
+    }
+    return null;
+  });
+
+  // Multi-Character Attachments (supports over 5 characters simultaneously!)
+  const [characterAttachments, setCharacterAttachments] = useState<Array<{
+    tag: string;
+    index: number;
+    charId: string;
+    name: string;
+    portraitPath?: string;
+  }>>([]);
+
+  const [recastPrompt, setRecastPrompt] = useState<string>(
+    'Swap character with @attachment1, 100% 1:1 camera physics and motion preservation.'
+  );
+
+  const [sceneDirectorPrompt, setSceneDirectorPrompt] = useState<string>('');
+  const [editingCharDesc, setEditCharDesc] = useState<string>('');
 
   // 6. User's Persisted Imported Videos ("My Imported Videos")
   const [myImportedVideos, setMyImportedVideos] = useState<ViralVideo[]>(() => {
@@ -324,11 +348,29 @@ export const DesktopStudioApp: React.FC = () => {
 
   const handleSaveRenameChar = (charId: string) => {
     if (!editCharName.trim()) return;
-    setVaultCharacters(prev => prev.map(c => c.id === charId ? { ...c, name: editCharName.trim() } : c));
-    if (selectedVaultChar.id === charId) {
-      setSelectedVaultChar(prev => ({ ...prev, name: editCharName.trim() }));
+    const updated = vaultCharacters.map(c => c.id === charId ? { 
+      ...c, 
+      name: editCharName.trim(),
+      style: editingCharDesc.trim() || c.style 
+    } : c);
+    setVaultCharacters(updated);
+    localStorage.setItem('genux_custom_vault_characters', JSON.stringify(updated));
+    if (selectedVaultChar?.id === charId) {
+      setSelectedVaultChar(prev => prev ? { ...prev, name: editCharName.trim(), style: editingCharDesc.trim() || prev.style } : null);
     }
+    setCharacterAttachments(prev => prev.map(a => a.charId === charId ? { ...a, name: editCharName.trim() } : a));
     setEditingCharId(null);
+  };
+
+  const handleDeleteCharacter = (charId: string) => {
+    if (!window.confirm('Delete this character from your Vault?')) return;
+    const updated = vaultCharacters.filter(c => c.id !== charId);
+    setVaultCharacters(updated);
+    localStorage.setItem('genux_custom_vault_characters', JSON.stringify(updated));
+    if (selectedVaultChar?.id === charId) {
+      setSelectedVaultChar(updated[0] || null);
+    }
+    setCharacterAttachments(prev => prev.filter(a => a.charId !== charId));
   };
 
   const sliderRef = useRef<HTMLDivElement>(null);
@@ -381,10 +423,22 @@ export const DesktopStudioApp: React.FC = () => {
       });
     }
 
-    // Check first-launch anonymous telemetry prompt
+    // Check first-launch anonymous telemetry prompt (strictly once)
     const seen = localStorage.getItem('genux_telemetry_prompt_seen');
     if (!seen) {
-      setShowFirstLaunchTelemetryModal(true);
+      if (window.genuxNative?.getSettings) {
+        window.genuxNative.getSettings().then((s: any) => {
+          if (!s?.telemetryPromptSeen) {
+            setShowFirstLaunchTelemetryModal(true);
+          } else {
+            localStorage.setItem('genux_telemetry_prompt_seen', 'true');
+          }
+        }).catch(() => {
+          setShowFirstLaunchTelemetryModal(true);
+        });
+      } else {
+        setShowFirstLaunchTelemetryModal(true);
+      }
     }
 
     // Listen for background auto-updater notifications
@@ -571,20 +625,38 @@ export const DesktopStudioApp: React.FC = () => {
       const files = await window.genuxNative.openImageDialog();
       if (files && files.length > 0) {
         const imgPath = files[0];
-        const charName = imgPath.split('\\').pop()?.split('/').pop()?.replace(/\.[^/.]+$/, '') || 'Custom Twin';
+        const charName = imgPath.split('\\').pop()?.split('/').pop()?.replace(/\.[^/.]+$/, '') || `Twin ${vaultCharacters.length + 1}`;
         const newChar: VaultCharacter = {
           id: `char-${Date.now()}`,
           name: charName,
           tag: '#InstantID',
-          avatarColor: 'from-emerald-600 to-teal-800',
+          avatarColor: 'from-violet-600 to-indigo-800',
           style: 'InstantID + PuLID Embedding Package (.gchar)',
           gcharSize: '22.8 MB',
           portraitPath: imgPath,
           similarityScore: 99.4
         };
-        setVaultCharacters([newChar, ...vaultCharacters]);
+        const updated = [newChar, ...vaultCharacters];
+        setVaultCharacters(updated);
         setSelectedVaultChar(newChar);
-        setEngineLogs(prev => [...prev, `[Vault] Created .gchar character container: ${charName}`]);
+        localStorage.setItem('genux_custom_vault_characters', JSON.stringify(updated));
+
+        // Auto-register attachment tag (@attachment1, @attachment2, ...)
+        const nextIdx = characterAttachments.length + 1;
+        const newAtt = {
+          tag: `@attachment${nextIdx}`,
+          index: nextIdx,
+          charId: newChar.id,
+          name: newChar.name,
+          portraitPath: imgPath
+        };
+        setCharacterAttachments(prev => [...prev, newAtt]);
+
+        setEngineLogs(prev => [
+          ...prev, 
+          `[Vault] Created .gchar character container: ${charName}`,
+          `[Director] Registered multi-character tag: ${newAtt.tag}`
+        ]);
         confetti({ particleCount: 40, spread: 50, origin: { y: 0.6 } });
       }
     }
@@ -615,7 +687,9 @@ export const DesktopStudioApp: React.FC = () => {
     setEngineLogs(prev => [
       ...prev,
       `[Pipeline] Launching Recast Engine for: ${selectedVideo.title}`,
-      `[Vault] Identity Anchor: ${selectedVaultChar.name} (Weight: ${identityWeight})`,
+      `[Vault] Identity Anchor: ${selectedVaultChar?.name || 'Multi-Character Attachments'} (Weight: ${identityWeight})`,
+      `[Multi-Tag] Tagged Characters: ${characterAttachments.map(a => `${a.tag} (${a.name})`).join(', ') || 'Direct Subject'}`,
+      sceneDirectorPrompt ? `[Gemma 2 Director] Scene/Object Modifiers: ${sceneDirectorPrompt}` : `[Gemma 2 Director] Preserving original environment`,
       `[Audio] Synchronizing original audio track with neural frames...`,
       `[Blackwell] 16GB Native FP8 E4M3 Latent Synthesis initialized.`
     ]);
@@ -638,8 +712,8 @@ export const DesktopStudioApp: React.FC = () => {
     // Save newly rendered video to Library
     const newRender: RenderedVideo = {
       id: `render-${Date.now()}`,
-      title: `${selectedVideo.title} — ${selectedVaultChar.name}`,
-      character: selectedVaultChar.name,
+      title: `${selectedVideo.title} — ${selectedVaultChar?.name || 'Recast Master'}`,
+      character: selectedVaultChar?.name || 'Multi-Character Recast',
       duration: selectedVideo.duration,
       filePath: selectedVideo.videoUrl || '',
       createdAt: Date.now(),
@@ -837,15 +911,15 @@ export const DesktopStudioApp: React.FC = () => {
               <span>Settings</span>
             </button>
 
-            {/* User Profile Pill */}
+            {/* User Profile Pill (Synchronized with Settings) */}
             <div className="px-3 py-2 rounded-xl bg-[#11131C] border border-white/[0.04] flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <div className="w-5 h-5 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-600 flex items-center justify-center text-[10px] font-bold text-white">
-                  X
+              <div className="flex items-center gap-2 min-w-0">
+                <div className="w-5 h-5 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-600 flex items-center justify-center text-[10px] font-bold text-white uppercase shrink-0">
+                  {studioUsername.charAt(0) || 'X'}
                 </div>
-                <span className="text-xs font-semibold text-slate-200">Xonarous</span>
+                <span className="text-xs font-semibold text-slate-200 truncate max-w-[100px]">{studioUsername}</span>
               </div>
-              <span className="text-[10px] font-mono text-emerald-400 font-bold">LOCAL</span>
+              <span className="text-[10px] font-mono text-emerald-400 font-bold shrink-0">LOCAL</span>
             </div>
 
           </div>
@@ -965,17 +1039,23 @@ export const DesktopStudioApp: React.FC = () => {
                   <div className="absolute inset-0 flex flex-col justify-between p-5 pointer-events-none">
                     <div className="absolute inset-0 flex items-center justify-center">
                       <div className="text-center">
-                        <div className={`w-32 h-32 mx-auto rounded-full bg-gradient-to-tr ${selectedVaultChar.avatarColor} p-1 shadow-[0_0_35px_rgba(139,92,246,0.6)] animate-pulse`}>
-                          <div className="w-full h-full rounded-full bg-black/50 backdrop-blur-sm flex items-center justify-center text-4xl font-extrabold text-white overflow-hidden">
-                            {selectedVaultChar.portraitPath ? (
-                              <img src={safeSrc(selectedVaultChar.portraitPath)} alt={selectedVaultChar.name} className="w-full h-full object-cover rounded-full" />
-                            ) : (
-                              selectedVaultChar.name[0]
-                            )}
+                        {selectedVaultChar ? (
+                          <div className={`w-32 h-32 mx-auto rounded-full bg-gradient-to-tr ${selectedVaultChar.avatarColor} p-1 shadow-[0_0_35px_rgba(139,92,246,0.6)] animate-pulse`}>
+                            <div className="w-full h-full rounded-full bg-black/50 backdrop-blur-sm flex items-center justify-center text-4xl font-extrabold text-white overflow-hidden">
+                              {selectedVaultChar.portraitPath ? (
+                                <img src={safeSrc(selectedVaultChar.portraitPath)} alt={selectedVaultChar.name} className="w-full h-full object-cover rounded-full" />
+                              ) : (
+                                selectedVaultChar.name[0]
+                              )}
+                            </div>
                           </div>
-                        </div>
+                        ) : (
+                          <div className="w-24 h-24 mx-auto rounded-full bg-gradient-to-tr from-indigo-500/30 to-purple-500/30 border border-white/10 flex items-center justify-center text-xs font-mono text-slate-400">
+                            Multi-Twin Tagged
+                          </div>
+                        )}
                         <div className="mt-3 font-mono font-bold text-xs tracking-wider text-white drop-shadow">
-                          {viewMode === 'original' ? 'ORIGINAL SUBJECT' : selectedVaultChar.name}
+                          {viewMode === 'original' ? 'ORIGINAL SUBJECT' : (selectedVaultChar?.name || 'Multi-Character Target')}
                         </div>
                         <div className="text-[10px] font-mono text-cyan-300">
                           {viewMode === 'original' ? selectedVideo.source : 'Wan 2.1 Blackwell Latent Synthesis (60 FPS)'}
@@ -1237,11 +1317,127 @@ export const DesktopStudioApp: React.FC = () => {
                 </div>
               </div>
 
-              {/* Character Selector */}
+              {/* Multi-Character Attachment Bar (Supports > 5 characters at once!) */}
+              <div className="space-y-2 p-3 rounded-2xl bg-black/40 border border-white/[0.08]">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5">
+                    <Sparkles size={13} className="text-cyan-400" />
+                    <label className="text-[11px] font-mono font-bold text-white uppercase tracking-wider">
+                      Multi-Twin Tags ({characterAttachments.length})
+                    </label>
+                  </div>
+                  <button
+                    onClick={handleNativeOpenImage}
+                    className="text-[10px] text-cyan-400 hover:text-cyan-300 font-bold transition flex items-center gap-1"
+                  >
+                    <UserPlus size={11} />
+                    <span>+ Attach Twin</span>
+                  </button>
+                </div>
+                <p className="text-[10px] text-slate-400 leading-snug">
+                  Replace 5+ characters simultaneously. Mention <code className="text-cyan-300 font-mono font-bold">@attachment1</code>, <code className="text-cyan-300 font-mono font-bold">@attachment2</code> etc. in the prompt below.
+                </p>
+
+                {/* Attachment Chips */}
+                <div className="flex flex-wrap gap-1.5 pt-1">
+                  {characterAttachments.map(att => (
+                    <div
+                      key={att.tag}
+                      onClick={() => {
+                        if (!recastPrompt.includes(att.tag)) {
+                          setRecastPrompt(prev => `${prev} ${att.tag}`);
+                        }
+                      }}
+                      className="px-2 py-1 rounded-xl bg-indigo-950/60 border border-indigo-500/40 hover:border-cyan-400 text-white flex items-center gap-1.5 text-[11px] cursor-pointer transition shadow-xs group"
+                      title={`Click to insert ${att.tag} into prompt`}
+                    >
+                      {att.portraitPath ? (
+                        <img src={safeSrc(att.portraitPath)} alt={att.name} className="w-4 h-4 rounded-full object-cover shrink-0" />
+                      ) : (
+                        <div className="w-4 h-4 rounded-full bg-indigo-500 flex items-center justify-center text-[9px] font-bold">
+                          {att.name[0]}
+                        </div>
+                      )}
+                      <span className="font-mono font-bold text-cyan-300">{att.tag}</span>
+                      <span className="text-slate-300 truncate max-w-[65px]">{att.name}</span>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setCharacterAttachments(prev => prev.filter(a => a.tag !== att.tag));
+                        }}
+                        className="text-slate-500 hover:text-rose-400 ml-0.5"
+                      >
+                        <X size={10} />
+                      </button>
+                    </div>
+                  ))}
+                  {characterAttachments.length === 0 && (
+                    <span className="text-[10px] font-mono text-slate-500 italic py-1">
+                      No attachments yet. Click + Attach Twin to tag extra characters.
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* Multi-Character Recast Prompt with Glowing Tags */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label className="text-[11px] font-mono font-bold text-slate-400 uppercase tracking-wider block">
+                    Recast Identity Prompt
+                  </label>
+                  <span className="text-[10px] font-mono text-cyan-400">Wan 2.1 Motion Swap</span>
+                </div>
+                <textarea
+                  rows={2}
+                  value={recastPrompt}
+                  onChange={(e) => setRecastPrompt(e.target.value)}
+                  placeholder="e.g. Swap dancer with @attachment1 and background dancer with @attachment2..."
+                  className="w-full bg-[#11141F] border border-white/[0.08] rounded-xl p-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 font-sans"
+                />
+                
+                {/* Visual Glowing Tag Highlighter Preview */}
+                <div className="p-2 rounded-xl bg-black/40 border border-white/[0.06] text-[11px] text-slate-300 flex flex-wrap items-center gap-1 min-h-[30px]">
+                  <span className="text-[9px] font-mono uppercase text-slate-500 mr-1">Parsed:</span>
+                  {recastPrompt.split(/(@attachment\d+)/g).map((part, i) => {
+                    const match = characterAttachments.find(a => a.tag === part);
+                    if (match) {
+                      return (
+                        <span key={i} className="px-1.5 py-0.5 rounded-md bg-cyan-500/20 border border-cyan-400 text-cyan-300 font-mono font-bold text-[10px] inline-flex items-center gap-1 shadow-[0_0_8px_rgba(6,182,212,0.4)]">
+                          <span>{part}</span>
+                          <span className="text-white/80">({match.name})</span>
+                        </span>
+                      );
+                    }
+                    return <span key={i}>{part}</span>;
+                  })}
+                </div>
+              </div>
+
+              {/* Gemma 2 Scene, Area & Object Director */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label className="text-[11px] font-mono font-bold text-slate-400 uppercase tracking-wider block">
+                    Scene, Area & Object Director (Gemma 2)
+                  </label>
+                  <span className="text-[10px] font-mono text-emerald-400">Props & Environment</span>
+                </div>
+                <textarea
+                  rows={2}
+                  value={sceneDirectorPrompt}
+                  onChange={(e) => setSceneDirectorPrompt(e.target.value)}
+                  placeholder="e.g. Change street to neon rainy Tokyo, change the car to a matte black Ferrari, change jacket to cyber armor, lock 1:1 camera physics..."
+                  className="w-full bg-[#11141F] border border-white/[0.08] rounded-xl p-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 font-sans"
+                />
+                <p className="text-[10px] text-slate-500 leading-snug">
+                  Gemma 2 Director modifies scene objects, background, and cars while locking character motion and facial likeness.
+                </p>
+              </div>
+
+              {/* Primary Character Vault Selector */}
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <label className="text-[11px] font-mono font-bold text-slate-400 uppercase tracking-wider block">
-                    Characters
+                    Primary Identity Anchor
                   </label>
                   <button
                     onClick={handleNativeOpenImage}
@@ -1252,36 +1448,48 @@ export const DesktopStudioApp: React.FC = () => {
                   </button>
                 </div>
 
-                <div className="space-y-1.5">
-                  {vaultCharacters.map(char => {
-                    const isSelected = selectedVaultChar.id === char.id;
-                    return (
-                      <div
-                        key={char.id}
-                        onClick={() => setSelectedVaultChar(char)}
-                        className={`p-2.5 rounded-xl border cursor-pointer transition flex items-center justify-between ${
-                          isSelected
-                            ? 'bg-indigo-950/30 border-indigo-500/50 text-white'
-                            : 'bg-white/[0.02] border-white/[0.04] text-slate-400 hover:text-white hover:bg-white/[0.04]'
-                        }`}
+                <div className="space-y-1.5 max-h-44 overflow-y-auto custom-scrollbar">
+                  {vaultCharacters.length === 0 ? (
+                    <div className="p-3 rounded-xl bg-white/[0.02] border border-dashed border-white/10 text-center">
+                      <p className="text-[11px] text-slate-400 mb-2">No characters in Vault.</p>
+                      <button
+                        onClick={handleNativeOpenImage}
+                        className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-[11px] font-bold"
                       >
-                        <div className="flex items-center gap-2.5">
-                          <div className={`w-8 h-8 rounded-full bg-gradient-to-tr ${char.avatarColor} flex items-center justify-center font-bold text-xs text-white overflow-hidden shrink-0`}>
-                            {char.portraitPath ? (
-                              <img src={safeSrc(char.portraitPath)} alt={char.name} className="w-full h-full object-cover rounded-full" />
-                            ) : (
-                              char.name[0]
-                            )}
+                        + Import Photo
+                      </button>
+                    </div>
+                  ) : (
+                    vaultCharacters.map(char => {
+                      const isSelected = selectedVaultChar?.id === char.id;
+                      return (
+                        <div
+                          key={char.id}
+                          onClick={() => setSelectedVaultChar(char)}
+                          className={`p-2.5 rounded-xl border cursor-pointer transition flex items-center justify-between ${
+                            isSelected
+                              ? 'bg-indigo-950/30 border-indigo-500/50 text-white'
+                              : 'bg-white/[0.02] border-white/[0.04] text-slate-400 hover:text-white hover:bg-white/[0.04]'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2.5">
+                            <div className={`w-8 h-8 rounded-full bg-gradient-to-tr ${char.avatarColor} flex items-center justify-center font-bold text-xs text-white overflow-hidden shrink-0`}>
+                              {char.portraitPath ? (
+                                <img src={safeSrc(char.portraitPath)} alt={char.name} className="w-full h-full object-cover rounded-full" />
+                              ) : (
+                                char.name[0]
+                              )}
+                            </div>
+                            <div className="min-w-0">
+                              <div className="text-xs font-bold text-white truncate">{char.name}</div>
+                              <div className="text-[10px] text-slate-500 truncate">{char.tag}</div>
+                            </div>
                           </div>
-                          <div className="min-w-0">
-                            <div className="text-xs font-bold text-white truncate">{char.name}</div>
-                            <div className="text-[10px] text-slate-500 truncate">{char.tag}</div>
-                          </div>
+                          <span className="text-[10px] font-mono text-cyan-400 font-bold shrink-0">{char.similarityScore}%</span>
                         </div>
-                        <span className="text-[10px] font-mono text-cyan-400 font-bold shrink-0">{char.similarityScore}%</span>
-                      </div>
-                    );
-                  })}
+                      );
+                    })
+                  )}
                 </div>
               </div>
 
@@ -1347,7 +1555,6 @@ export const DesktopStudioApp: React.FC = () => {
             <div className="flex items-center justify-between border-b border-white/[0.06] pb-4">
               <div className="flex items-center gap-2">
                 {[
-                  { id: 'trending', label: '🔥 Viral Trends', count: viralVideos.length },
                   { id: 'my_imports', label: '📥 My Imported Videos', count: myImportedVideos.length },
                   { id: 'youtube', label: '🔍 In-App YouTube Search', count: null },
                   { id: 'importer', label: '🔗 Direct Link / URL', count: null },
@@ -1385,38 +1592,6 @@ export const DesktopStudioApp: React.FC = () => {
                 <span>Open Local File...</span>
               </button>
             </div>
-
-            {/* SUB-VIEW 1: TRENDING VIRAL PRESETS */}
-            {librarySubTab === 'trending' && (
-              <div className="flex-1 overflow-y-auto grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {viralVideos.map(video => (
-                  <div
-                    key={video.id}
-                    className="p-4 rounded-2xl bg-white/[0.02] border border-white/[0.06] hover:border-indigo-500/40 transition space-y-3 flex flex-col justify-between"
-                  >
-                    <div className="space-y-1">
-                      <div className="flex items-center justify-between text-[11px] font-mono text-indigo-400">
-                        <span>{video.views}</span>
-                        <span>{video.duration}s</span>
-                      </div>
-                      <h4 className="font-bold text-sm text-white">{video.title}</h4>
-                      <p className="text-xs text-slate-400">{video.category}</p>
-                    </div>
-
-                    <button
-                      onClick={() => {
-                        setSelectedVideo(video);
-                        setActiveNav('create');
-                      }}
-                      className="w-full py-2 rounded-xl bg-indigo-600/30 hover:bg-indigo-600/50 text-indigo-200 text-xs font-bold transition flex items-center justify-center gap-1.5"
-                    >
-                      <Play size={13} className="fill-indigo-200" />
-                      <span>Load into Studio</span>
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
 
             {/* SUB-VIEW 2: MY IMPORTED VIDEOS (Persisted!) */}
             {librarySubTab === 'my_imports' && (
@@ -1674,75 +1849,154 @@ export const DesktopStudioApp: React.FC = () => {
               </button>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {vaultCharacters.map(char => (
-                <div
-                  key={char.id}
-                  className="p-5 rounded-2xl bg-[#0E111A] border border-white/[0.08] space-y-4 hover:border-indigo-500/30 transition"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className={`w-12 h-12 rounded-full bg-gradient-to-tr ${char.avatarColor} flex items-center justify-center font-bold text-white shadow-md overflow-hidden shrink-0`}>
-                      {char.portraitPath ? (
-                        <img src={safeSrc(char.portraitPath)} alt={char.name} className="w-full h-full object-cover rounded-full" />
-                      ) : (
-                        <span className="text-xl">{char.name[0]}</span>
-                      )}
-                    </div>
-                    
-                    <div className="flex-1 min-w-0">
-                      {editingCharId === char.id ? (
-                        <div className="flex items-center gap-1">
-                          <input
-                            type="text"
-                            value={editCharName}
-                            onChange={(e) => setEditCharName(e.target.value)}
-                            onKeyDown={(e) => e.key === 'Enter' && handleSaveRenameChar(char.id)}
-                            className="w-full bg-[#161B29] border border-indigo-500 rounded-lg px-2 py-1 text-xs text-white focus:outline-none"
-                            autoFocus
-                          />
-                          <button
-                            onClick={() => handleSaveRenameChar(char.id)}
-                            className="p-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white transition"
-                            title="Save"
-                          >
-                            <Check size={12} />
-                          </button>
-                          <button
-                            onClick={() => setEditingCharId(null)}
-                            className="p-1 rounded-lg bg-white/[0.08] hover:bg-white/[0.14] text-slate-300 transition"
-                            title="Cancel"
-                          >
-                            <X size={12} />
-                          </button>
-                        </div>
-                      ) : (
-                        <div className="flex items-center gap-1.5">
-                          <h4 className="font-bold text-sm text-white truncate">{char.name}</h4>
-                          <button
-                            onClick={() => {
-                              setEditingCharId(char.id);
-                              setEditCharName(char.name);
-                            }}
-                            className="p-1 rounded-md text-slate-500 hover:text-indigo-400 hover:bg-white/[0.04] transition"
-                            title="Rename Character"
-                          >
-                            <Edit3 size={11} />
-                          </button>
-                        </div>
-                      )}
-                      <span className="text-[10px] font-mono text-cyan-400 font-bold">{char.tag}</span>
-                    </div>
-                  </div>
-
-                  <p className="text-xs text-slate-400 leading-relaxed">{char.style}</p>
-
-                  <div className="pt-2 border-t border-white/[0.06] flex items-center justify-between text-xs font-mono">
-                    <span className="text-slate-500">{char.gcharSize}</span>
-                    <span className="text-emerald-400 font-bold">{char.similarityScore}% Match</span>
-                  </div>
+            {vaultCharacters.length === 0 ? (
+              <div className="h-96 flex flex-col items-center justify-center text-center p-8 border-2 border-dashed border-white/10 rounded-3xl bg-black/20">
+                <div className="w-16 h-16 rounded-2xl bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400 mb-4 shadow-lg">
+                  <UserPlus size={28} />
                 </div>
-              ))}
-            </div>
+                <h3 className="text-base font-bold text-white mb-1">No Characters in Vault</h3>
+                <p className="text-xs text-slate-400 max-w-sm mb-5 leading-relaxed">
+                  Import any character photo or portrait to extract 133-point facial biometric embeddings (.gchar) for 1:1 motion recasting.
+                </p>
+                <button
+                  onClick={handleNativeOpenImage}
+                  className="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition flex items-center gap-2 shadow-lg shadow-indigo-600/30"
+                >
+                  <UserPlus size={14} />
+                  <span>+ Import First Character Portrait</span>
+                </button>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
+                {vaultCharacters.map(char => (
+                  <div
+                    key={char.id}
+                    className="rounded-3xl bg-[#0E111A] border border-white/[0.08] overflow-hidden hover:border-indigo-500/40 transition flex flex-col justify-between shadow-xl"
+                  >
+                    {/* Big Preview Image (Full Resolution Portrait) */}
+                    <div className="w-full aspect-[3/4] max-h-72 bg-black/60 relative overflow-hidden group">
+                      {char.portraitPath ? (
+                        <img 
+                          src={safeSrc(char.portraitPath)} 
+                          alt={char.name} 
+                          className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" 
+                        />
+                      ) : (
+                        <div className={`w-full h-full bg-gradient-to-tr ${char.avatarColor} flex items-center justify-center text-5xl font-bold text-white`}>
+                          {char.name[0]}
+                        </div>
+                      )}
+                      
+                      {/* Top Badges */}
+                      <div className="absolute top-3 left-3 px-2 py-0.5 rounded-full bg-black/75 backdrop-blur-md text-[10px] font-mono text-cyan-300 font-bold border border-white/10">
+                        {char.tag}
+                      </div>
+                      <div className="absolute top-3 right-3 px-2 py-0.5 rounded-full bg-emerald-500/85 text-white font-mono text-[10px] font-bold">
+                        {char.similarityScore}% Match
+                      </div>
+
+                      {/* Delete Quick Action */}
+                      <button
+                        onClick={() => handleDeleteCharacter(char.id)}
+                        title="Delete character from Vault"
+                        className="absolute bottom-3 right-3 p-2 rounded-xl bg-black/80 hover:bg-rose-600 text-white opacity-0 group-hover:opacity-100 transition shadow-lg"
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    </div>
+
+                    {/* Character Details & Inline Name + Description Editor */}
+                    <div className="p-4 space-y-3">
+                      {editingCharId === char.id ? (
+                        <div className="space-y-2.5">
+                          <div>
+                            <label className="text-[10px] text-slate-400 font-mono block mb-1">Character Name</label>
+                            <input
+                              type="text"
+                              value={editCharName}
+                              onChange={(e) => setEditCharName(e.target.value)}
+                              className="w-full bg-[#161B29] border border-indigo-500 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none"
+                              placeholder="Name"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="text-[10px] text-slate-400 font-mono block mb-1">Description / Style Prompt</label>
+                            <textarea
+                              rows={2}
+                              value={editingCharDesc}
+                              onChange={(e) => setEditCharDesc(e.target.value)}
+                              className="w-full bg-[#161B29] border border-indigo-500 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none"
+                              placeholder="Description or appearance prompt"
+                            />
+                          </div>
+
+                          <div className="flex items-center gap-1.5 pt-1">
+                            <button
+                              onClick={() => handleSaveRenameChar(char.id)}
+                              className="flex-1 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition flex items-center justify-center gap-1"
+                            >
+                              <Check size={12} />
+                              <span>Save</span>
+                            </button>
+                            <button
+                              onClick={() => setEditingCharId(null)}
+                              className="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/15 text-slate-300 text-xs transition"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="space-y-1.5">
+                          <div className="flex items-center justify-between">
+                            <h4 className="font-bold text-sm text-white truncate">{char.name}</h4>
+                            <button
+                              onClick={() => {
+                                setEditingCharId(char.id);
+                                setEditCharName(char.name);
+                                setEditCharDesc(char.style || '');
+                              }}
+                              className="p-1 rounded-md text-slate-400 hover:text-indigo-400 hover:bg-white/[0.06] transition flex items-center gap-1 text-[11px]"
+                              title="Edit Name & Description"
+                            >
+                              <Edit3 size={11} />
+                              <span>Edit</span>
+                            </button>
+                          </div>
+                          <p className="text-xs text-slate-400 line-clamp-2 leading-relaxed">
+                            {char.style || 'Custom character twin container (.gchar)'}
+                          </p>
+                        </div>
+                      )}
+
+                      <div className="pt-2 border-t border-white/[0.06] flex items-center justify-between text-[11px] font-mono text-slate-400">
+                        <span>{char.gcharSize}</span>
+                        <button
+                          onClick={() => {
+                            setSelectedVaultChar(char);
+                            if (!characterAttachments.some(a => a.charId === char.id)) {
+                              const nextIdx = characterAttachments.length + 1;
+                              setCharacterAttachments(prev => [...prev, {
+                                tag: `@attachment${nextIdx}`,
+                                index: nextIdx,
+                                charId: char.id,
+                                name: char.name,
+                                portraitPath: char.portraitPath
+                              }]);
+                            }
+                            setActiveNav('create');
+                          }}
+                          className="text-indigo-400 hover:text-indigo-300 font-bold transition flex items-center gap-1"
+                        >
+                          <span>Use in Studio →</span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
@@ -1845,7 +2099,16 @@ export const DesktopStudioApp: React.FC = () => {
       {/* Unified Settings Modal (Matches Screenshot 2 & 3) */}
       <SettingsModal
         isOpen={isSettingsOpen}
-        onClose={() => setIsSettingsOpen(false)}
+        onClose={() => {
+          setIsSettingsOpen(false);
+          const saved = localStorage.getItem('genux_unified_settings');
+          if (saved) {
+            try { setStudioUsername(JSON.parse(saved).username || 'Xonarous'); } catch (e) {}
+          }
+        }}
+        onSave={(newSettings) => {
+          setStudioUsername(newSettings.username || 'Xonarous');
+        }}
       />
 
       {/* Auto-Updater Available Notification Toast */}

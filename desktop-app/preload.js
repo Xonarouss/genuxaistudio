@@ -26,6 +26,7 @@ contextBridge.exposeInMainWorld('genuxNative', {
   cancelModelDownload: (modelId) => ipcRenderer.invoke('downloader:cancelDownload', modelId),
   listModels: () => ipcRenderer.invoke('downloader:listModels'),
   importLocalModelFile: (modelId) => ipcRenderer.invoke('downloader:importLocalModelFile', modelId),
+  removeModelFile: (modelId) => ipcRenderer.invoke('downloader:removeModelFile', modelId),
   onModelDownloadProgress: (callback) => {
     const handler = (_, data) => callback(data);
     ipcRenderer.on('downloader:progress', handler);

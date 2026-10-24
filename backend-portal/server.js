@@ -8,12 +8,27 @@ const { authenticator } = require('otplib');
 const qrcode = require('qrcode');
 
 const app = express();
-const PORT = process.env.PORT || 3001;
+const PORT = process.env.PORT || 3000;
 const JWT_SECRET = process.env.JWT_SECRET || 'genux-admin-super-secure-key-2026';
 
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
-app.use(express.static(path.join(__dirname, 'public')));
+
+// Paths for Web Portal and Admin Portal
+const ADMIN_PUBLIC_DIR = path.join(__dirname, 'public');
+const WEB_DIST_DIR = fs.existsSync(path.join(__dirname, 'public', 'web'))
+  ? path.join(__dirname, 'public', 'web')
+  : path.join(__dirname, '..', 'web-portal', 'dist');
+
+// Serve Admin static assets under /admin
+app.use('/admin', express.static(ADMIN_PUBLIC_DIR));
+
+// Serve Web portal static assets under /
+if (fs.existsSync(WEB_DIST_DIR)) {
+  app.use(express.static(WEB_DIST_DIR));
+} else {
+  app.use(express.static(ADMIN_PUBLIC_DIR));
+}
 
 // Ensure data folder exists
 const DATA_DIR = path.join(__dirname, 'data');
@@ -359,9 +374,16 @@ app.post('/api/admin/clear-errors', requireAdmin, (req, res) => {
   res.json({ success: true, message: 'Error log cleared.' });
 });
 
-// Fallback to SPA index.html
+// Fallback to SPA routing for Admin Portal and Web Portal
 app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+  if (req.path.startsWith('/admin')) {
+    return res.sendFile(path.join(ADMIN_PUBLIC_DIR, 'index.html'));
+  }
+  const webIndex = path.join(WEB_DIST_DIR, 'index.html');
+  if (fs.existsSync(webIndex)) {
+    return res.sendFile(webIndex);
+  }
+  res.sendFile(path.join(ADMIN_PUBLIC_DIR, 'index.html'));
 });
 
 app.listen(PORT, () => {

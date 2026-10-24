@@ -762,6 +762,24 @@ ipcMain.handle('downloader:importLocalModelFile', async (_, modelId) => {
   return { success: false, cancelled: true };
 });
 
+ipcMain.handle('downloader:removeModelFile', async (_, modelId) => {
+  const meta = MODEL_CATALOG[modelId];
+  if (!meta) return { success: false, error: 'Unknown model' };
+  const modelsDir = getEffectiveModelsDir();
+  const destPath = path.join(modelsDir, meta.filename);
+  const partPath = path.join(modelsDir, meta.filename + '.part');
+
+  try {
+    if (fs.existsSync(destPath)) fs.unlinkSync(destPath);
+    if (fs.existsSync(partPath)) fs.unlinkSync(partPath);
+    console.log(`[ModelDownloader] Removed model ${modelId} from ${destPath}`);
+    return { success: true, modelId };
+  } catch (e) {
+    console.error(`[ModelDownloader] Error removing ${destPath}:`, e);
+    return { success: false, error: e.message };
+  }
+});
+
 function getEffectiveYtDlp() {
   const candidates = [
     path.join(__dirname, 'bin', 'yt-dlp.exe'),

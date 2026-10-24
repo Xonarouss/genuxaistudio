@@ -56,6 +56,7 @@ export function App() {
         {/* Hero Section */}
         <HeroSection 
           onDownloadExe={handleDownloadExe}
+          onOpenDocs={() => setIsDocsOpen(true)}
         />
 
         {/* The 6 AI Models Specs & Architecture */}

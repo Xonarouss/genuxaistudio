@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
   X, Download, CheckCircle2, RefreshCw, HardDrive, 
-  Zap, FolderOpen, ArrowDownToLine
+  Zap, FolderOpen, ArrowDownToLine, Trash2
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
@@ -274,6 +274,28 @@ export const ModelHubModal: React.FC<ModelHubModalProps> = ({ isOpen, onClose })
     }
   };
 
+  const handleRemoveModel = async (id: string) => {
+    if (!window.confirm(`Are you sure you want to remove and delete this model from disk?`)) return;
+    if (window.genuxNative?.removeModelFile) {
+      try {
+        const res = await window.genuxNative.removeModelFile(id);
+        if (res && res.success) {
+          setModels(prev => prev.map(m => m.id === id ? {
+            ...m,
+            status: 'missing',
+            progress: 0,
+            localPath: ''
+          } : m));
+          refreshCatalog();
+        }
+      } catch (err: any) {
+        alert(`Failed to remove model: ${err.message}`);
+      }
+    } else {
+      setModels(prev => prev.map(m => m.id === id ? { ...m, status: 'missing', progress: 0 } : m));
+    }
+  };
+
   const handleDownloadAllMissing = () => {
     const missing = models.filter(m => m.status === 'missing');
     missing.forEach(m => handleDownloadModel(m.id));
@@ -430,9 +452,18 @@ export const ModelHubModal: React.FC<ModelHubModalProps> = ({ isOpen, onClose })
                   {/* Right Actions */}
                   <div className="flex items-center gap-2 shrink-0">
                     {isInstalled ? (
-                      <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-xs font-mono font-semibold">
-                        <CheckCircle2 size={14} />
-                        <span>Ready</span>
+                      <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-xs font-mono font-semibold">
+                          <CheckCircle2 size={14} />
+                          <span>Ready</span>
+                        </div>
+                        <button
+                          onClick={() => handleRemoveModel(model.id)}
+                          title="Remove model weights from disk to free up VRAM and space"
+                          className="p-1.5 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 text-rose-400 hover:text-rose-300 transition cursor-pointer"
+                        >
+                          <Trash2 size={13} />
+                        </button>
                       </div>
                     ) : isDownloading ? (
                       <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-violet-500/20 border border-violet-500/30 text-violet-300 text-xs font-mono">
