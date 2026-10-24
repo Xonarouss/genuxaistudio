@@ -1,5 +1,5 @@
 import React from 'react';
-import { ShieldCheck, Cpu, Layers } from 'lucide-react';
+import { Cpu, Layers, CheckCircle2 } from 'lucide-react';
 
 interface ModelDetail {
   id: string;
@@ -40,7 +40,7 @@ const MODELS_CATALOG: ModelDetail[] = [
     size: '420 MB (ONNX)',
     vramUsage: '~400 MB VRAM',
     architecture: 'OpenMMLab Two-Stage Pose Estimator',
-    description: 'Tracks whole-body kinematics including 68 facial points, 42 hand finger joints, and 23 body skeletal joints to ensure Anatomically perfect character warping.',
+    description: 'Tracks whole-body kinematics including 68 facial points, 42 hand finger joints, and 23 body skeletal joints to ensure anatomically perfect character warping.',
     tags: ['OpenMMLab', '133 Keypoints', 'Hand & Face', 'Real-time']
   },
   {
@@ -77,23 +77,20 @@ const MODELS_CATALOG: ModelDetail[] = [
 
 export const ModelsSection: React.FC = () => {
   return (
-    <section id="models" className="py-20 bg-slate-900 text-white relative overflow-hidden">
-      {/* Background Glow */}
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[400px] bg-indigo-600/10 blur-[140px] pointer-events-none" />
-
+    <section id="models" className="py-24 bg-slate-50/70 border-b border-slate-200/80 relative">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
         
         {/* Section Header */}
         <div className="text-center max-w-3xl mx-auto mb-16">
-          <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 text-xs font-bold uppercase tracking-wider mb-4">
+          <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-indigo-50 border border-indigo-200 text-indigo-700 text-xs font-bold uppercase tracking-wider mb-4">
             <Layers size={14} />
             <span>AI Architecture & Checkpoints</span>
           </div>
-          <h2 className="text-3xl sm:text-5xl font-extrabold tracking-tight text-white mb-4">
+          <h2 className="text-3xl sm:text-5xl font-extrabold tracking-tight text-slate-900 mb-4">
             The 6 Models Powering Genux AI
           </h2>
-          <p className="text-base text-slate-400 leading-relaxed">
-            All AI models run 100% locally on your computer with zero cloud telemetry. Download weights through the built-in Vault or auto-link your existing ComfyUI and HuggingFace directories.
+          <p className="text-sm sm:text-base text-slate-600 leading-relaxed">
+            All AI models run 100% locally on your PC with zero cloud telemetry. Download weights securely inside the desktop app or auto-link existing ComfyUI and HuggingFace directories.
           </p>
         </div>
 
@@ -102,48 +99,49 @@ export const ModelsSection: React.FC = () => {
           {MODELS_CATALOG.map((model) => (
             <div 
               key={model.id}
-              className="group p-6 rounded-3xl bg-slate-800/60 border border-white/[0.08] hover:border-indigo-500/40 transition-all duration-300 hover:shadow-2xl hover:shadow-indigo-500/10 flex flex-col justify-between"
+              className="group p-7 rounded-3xl bg-white border border-slate-200 hover:border-indigo-400 hover:shadow-xl transition-all duration-300 flex flex-col justify-between"
             >
               <div>
                 {/* Header with Badges */}
                 <div className="flex items-start justify-between gap-3 mb-4">
-                  <div className="p-3 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 group-hover:scale-110 transition-transform">
+                  <div className="p-3 rounded-2xl bg-indigo-50 border border-indigo-100 text-indigo-600 group-hover:scale-105 transition-transform">
                     <Cpu size={22} />
                   </div>
                   <div className="text-right">
-                    <span className="inline-block px-2.5 py-1 rounded-lg bg-white/[0.06] font-mono text-xs text-indigo-300 font-bold">
+                    <span className="inline-block px-2.5 py-1 rounded-lg bg-slate-100 border border-slate-200 font-mono text-xs text-slate-800 font-bold">
                       {model.size}
                     </span>
-                    <div className="text-[11px] font-mono text-slate-400 mt-1">
+                    <div className="text-[11px] font-mono text-indigo-600 font-semibold mt-1">
                       {model.vramUsage}
                     </div>
                   </div>
                 </div>
 
                 {/* Model Title & Role */}
-                <h3 className="text-lg font-bold text-white mb-1 group-hover:text-indigo-300 transition-colors">
+                <h3 className="text-lg font-bold text-slate-900 mb-1 group-hover:text-indigo-600 transition-colors">
                   {model.name}
                 </h3>
-                <div className="text-xs font-semibold text-indigo-400 mb-3">
+                <div className="text-xs font-semibold text-indigo-600 mb-3">
                   {model.role}
                 </div>
 
                 {/* Description */}
-                <p className="text-xs text-slate-300 leading-relaxed mb-5">
+                <p className="text-xs sm:text-sm text-slate-600 leading-relaxed mb-6">
                   {model.description}
                 </p>
               </div>
 
               {/* Tags & Architecture */}
-              <div className="pt-4 border-t border-white/[0.06]">
-                <div className="text-[11px] font-mono text-slate-400 mb-2 truncate">
-                  ⚡ {model.architecture}
+              <div className="pt-4 border-t border-slate-100">
+                <div className="text-[11px] font-mono text-slate-500 mb-3 truncate flex items-center gap-1">
+                  <span className="text-indigo-500 font-bold">⚡</span> {model.architecture}
                 </div>
+
                 <div className="flex flex-wrap gap-1.5">
-                  {model.tags.map((tag, idx) => (
+                  {model.tags.map((tag) => (
                     <span 
-                      key={idx}
-                      className="px-2 py-0.5 rounded-md bg-white/[0.04] text-slate-400 text-[10px] font-medium"
+                      key={tag}
+                      className="px-2 py-0.5 rounded-md bg-slate-50 border border-slate-200 text-slate-600 font-mono text-[10px] font-medium"
                     >
                       {tag}
                     </span>
@@ -155,27 +153,21 @@ export const ModelsSection: React.FC = () => {
           ))}
         </div>
 
-        {/* Storage Notice & Cleanup Guarantee */}
-        <div className="mt-12 p-6 rounded-2xl bg-slate-800/40 border border-indigo-500/20 flex flex-col md:flex-row items-center justify-between gap-4">
+        {/* Feature Highlights Banner */}
+        <div className="mt-12 p-6 rounded-2xl bg-white border border-slate-200 flex flex-col md:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            <div className="p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 shrink-0">
-              <ShieldCheck size={20} />
+            <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold">
+              <CheckCircle2 className="w-5 h-5" />
             </div>
             <div>
-              <h4 className="text-sm font-bold text-white">Configurable Storage & Clean Uninstallation</h4>
-              <p className="text-xs text-slate-400">
-                Choose any SSD or secondary hard drive partition for model weights in Settings or the Vault. If you uninstall Genux AI, all downloaded models and cache folders are automatically wiped from your PC.
-              </p>
+              <div className="text-sm font-bold text-slate-900">Zero Cloud Subscriptions & No Hidden Queues</div>
+              <div className="text-xs text-slate-500">Every single tensor operation executes locally on your GPU cores.</div>
             </div>
           </div>
-          <a
-            href="https://docs.genuxai.io"
-            target="_blank"
-            rel="noreferrer"
-            className="px-4 py-2 rounded-xl bg-white/[0.08] hover:bg-white/[0.14] text-white text-xs font-bold transition shrink-0"
-          >
-            Read Docs →
-          </a>
+          <div className="flex items-center gap-2 font-mono text-xs text-slate-600">
+            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+            <span>Local TensorRT 10.x C++20 Runtime</span>
+          </div>
         </div>
 
       </div>

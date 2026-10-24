@@ -5,12 +5,10 @@ import {
 } from 'lucide-react';
 
 interface FeatureBentoProps {
-  onOpenModelHub: () => void;
   onOpenStudio: () => void;
 }
 
 export const FeatureBento: React.FC<FeatureBentoProps> = ({ 
-  onOpenModelHub, 
   onOpenStudio 
 }) => {
   return (
@@ -154,10 +152,10 @@ export const FeatureBento: React.FC<FeatureBentoProps> = ({
             </div>
 
             <button 
-              onClick={onOpenModelHub}
+              onClick={onOpenStudio}
               className="inline-flex items-center gap-1.5 text-xs font-bold text-indigo-600 hover:text-indigo-800"
             >
-              <span>Test Pre-Flight Model Scanner</span>
+              <span>Download Desktop Installer</span>
               <ArrowRight className="w-3.5 h-3.5" />
             </button>
           </div>

@@ -1,0 +1,31 @@
+version: '3.8'
+
+services:
+  genux-website:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: genux-website
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    environment:
+      - NODE_ENV=production
+
+  genux-admin-portal:
+    build:
+      context: ./backend-portal
+      dockerfile: Dockerfile
+    container_name: genux-admin-portal
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    environment:
+      - PORT=3001
+      - NODE_ENV=production
+      - JWT_SECRET=genux-admin-super-secure-key-2026
+    volumes:
+      - admin-data:/app/data
+
+volumes:
+  admin-data:

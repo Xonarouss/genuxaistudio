@@ -6,14 +6,12 @@ import { RequirementsSection } from './components/RequirementsSection';
 import { FeatureBento } from './components/FeatureBento';
 import { ArchitectureSection } from './components/ArchitectureSection';
 import { Footer } from './components/Footer';
-import { ModelHubModal } from './components/ModelHubModal';
 import { DocsPage } from './components/DocsPage';
 import { Download, X, BookOpen } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
 export function App() {
   const [isDocsOpen, setIsDocsOpen] = useState<boolean>(false);
-  const [isModelHubOpen, setIsModelHubOpen] = useState<boolean>(false);
   const [downloadModalOpen, setDownloadModalOpen] = useState<boolean>(false);
 
   // Check URL hash or query param for ?docs
@@ -49,7 +47,6 @@ export function App() {
     <div className="min-h-screen bg-white text-slate-900 selection:bg-indigo-500 selection:text-white flex flex-col font-sans">
       {/* Top Sticky Navbar */}
       <Navbar 
-        onOpenModelHub={() => setIsModelHubOpen(true)}
         onDownloadExe={handleDownloadExe}
         onOpenDocs={() => setIsDocsOpen(true)}
       />
@@ -69,7 +66,6 @@ export function App() {
 
         {/* Features & Video Workflow */}
         <FeatureBento 
-          onOpenModelHub={() => setIsModelHubOpen(true)}
           onOpenStudio={handleDownloadExe}
         />
 
@@ -79,14 +75,7 @@ export function App() {
 
       {/* Footer */}
       <Footer 
-        onOpenModelHub={() => setIsModelHubOpen(true)}
         onDownloadExe={handleDownloadExe}
-      />
-
-      {/* Model Hub Modal */}
-      <ModelHubModal 
-        isOpen={isModelHubOpen}
-        onClose={() => setIsModelHubOpen(false)}
       />
 
       {/* Download Windows App Modal */}

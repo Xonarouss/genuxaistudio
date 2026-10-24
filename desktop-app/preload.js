@@ -55,6 +55,21 @@ contextBridge.exposeInMainWorld('genuxNative', {
     const handler = (_, data) => callback(data);
     ipcRenderer.on('pipeline:progress', handler);
     return () => ipcRenderer.removeListener('pipeline:progress', handler);
-  }
+  },
+
+  // Auto-Updater APIs
+  getAppVersion: () => ipcRenderer.invoke('updater:getVersion'),
+  checkAppUpdate: () => ipcRenderer.invoke('updater:checkAppUpdate'),
+  downloadAndInstallUpdate: (url) => ipcRenderer.invoke('updater:downloadAndInstallUpdate', url),
+  checkModelUpdates: () => ipcRenderer.invoke('updater:checkModelUpdates'),
+  onUpdateAvailable: (callback) => {
+    const handler = (_, data) => callback(data);
+    ipcRenderer.on('updater:updateAvailable', handler);
+    return () => ipcRenderer.removeListener('updater:updateAvailable', handler);
+  },
+
+  // Anonymous Telemetry & Sync APIs
+  syncTelemetry: (extra) => ipcRenderer.invoke('telemetry:sync', extra),
+  logClientError: (err) => ipcRenderer.invoke('telemetry:logError', err)
 });
 

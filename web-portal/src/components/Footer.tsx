@@ -3,12 +3,10 @@ import { GenuxLogo } from './GenuxLogo';
 import { ExternalLink } from 'lucide-react';
 
 interface FooterProps {
-  onOpenModelHub: () => void;
   onDownloadExe: () => void;
 }
 
 export const Footer: React.FC<FooterProps> = ({ 
-  onOpenModelHub, 
   onDownloadExe 
 }) => {
   return (
@@ -54,9 +52,9 @@ export const Footer: React.FC<FooterProps> = ({
                 </a>
               </li>
               <li>
-                <button onClick={onOpenModelHub} className="hover:text-indigo-600 transition-colors text-left">
-                  Model Vault Catalog
-                </button>
+                <a href="#architecture" className="hover:text-indigo-600 transition-colors">
+                  Blackwell Architecture
+                </a>
               </li>
             </ul>
           </div>

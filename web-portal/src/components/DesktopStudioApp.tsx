@@ -9,7 +9,8 @@ import {
   ExternalLink,
   Camera, Move3d, Flame, Volume2, VolumeX,
   Search, Trash2, AlertTriangle,
-  Clapperboard, Edit3, Check, RotateCcw
+  Clapperboard, Edit3, Check, RotateCcw,
+  ShieldCheck, DownloadCloud, CheckCircle2
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { GenuxLogo } from './GenuxLogo';
@@ -49,6 +50,13 @@ declare global {
       startRecastJob: (jobConfig: any) => Promise<{ success: boolean; exitCode: number }>;
       cancelRecastJob: () => Promise<boolean>;
       onPipelineProgress: (callback: (data: string) => void) => () => void;
+      getAppVersion?: () => Promise<string>;
+      checkAppUpdate?: () => Promise<any>;
+      downloadAndInstallUpdate?: (url?: string) => Promise<any>;
+      checkModelUpdates?: () => Promise<any[]>;
+      onUpdateAvailable?: (callback: (data: any) => void) => () => void;
+      syncTelemetry?: (extra?: any) => Promise<any>;
+      logClientError?: (err: any) => Promise<any>;
     };
   }
 }
@@ -198,6 +206,8 @@ export const DesktopStudioApp: React.FC = () => {
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
   const [showEngineRequiredModal, setShowEngineRequiredModal] = useState<boolean>(false);
   const [isMaximized, setIsMaximized] = useState<boolean>(false);
+  const [showFirstLaunchTelemetryModal, setShowFirstLaunchTelemetryModal] = useState<boolean>(false);
+  const [availableUpdateNotification, setAvailableUpdateNotification] = useState<any>(null);
 
   // 4. Engine & Model Status
   const [installedModelCount, setInstalledModelCount] = useState<number>(0);
@@ -371,8 +381,23 @@ export const DesktopStudioApp: React.FC = () => {
       });
     }
 
+    // Check first-launch anonymous telemetry prompt
+    const seen = localStorage.getItem('genux_telemetry_prompt_seen');
+    if (!seen) {
+      setShowFirstLaunchTelemetryModal(true);
+    }
+
+    // Listen for background auto-updater notifications
+    let cleanupUpdater: (() => void) | undefined;
+    if (window.genuxNative?.onUpdateAvailable) {
+      cleanupUpdater = window.genuxNative.onUpdateAvailable((data: any) => {
+        setAvailableUpdateNotification(data);
+      });
+    }
+
     return () => {
       if (cleanupProgress) cleanupProgress();
+      if (cleanupUpdater) cleanupUpdater();
     };
   }, []);
 
@@ -1822,6 +1847,119 @@ export const DesktopStudioApp: React.FC = () => {
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}
       />
+
+      {/* Auto-Updater Available Notification Toast */}
+      {availableUpdateNotification && (
+        <div className="fixed top-12 right-6 z-50 max-w-md bg-slate-900 border border-emerald-500/50 rounded-2xl p-4 shadow-2xl animate-fadeIn text-xs text-white">
+          <div className="flex items-start justify-between gap-3 mb-2">
+            <div className="flex items-center gap-2 text-emerald-400 font-bold">
+              <DownloadCloud size={16} />
+              <span>Update Available: {availableUpdateNotification.latestVersion}</span>
+            </div>
+            <button
+              onClick={() => setAvailableUpdateNotification(null)}
+              className="text-slate-400 hover:text-white"
+            >
+              <X size={14} />
+            </button>
+          </div>
+          <p className="text-[11px] text-slate-300 mb-3 leading-relaxed">
+            A new version of Genux AI Studio is available with performance improvements and model updates.
+          </p>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => {
+                if (window.genuxNative?.downloadAndInstallUpdate) {
+                  window.genuxNative.downloadAndInstallUpdate(availableUpdateNotification.downloadUrl);
+                } else if (window.genuxNative?.openExternal) {
+                  window.genuxNative.openExternal(availableUpdateNotification.downloadUrl);
+                }
+                setAvailableUpdateNotification(null);
+              }}
+              className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 font-bold text-white transition flex items-center gap-1.5 shadow-md shadow-emerald-600/20"
+            >
+              <DownloadCloud size={12} />
+              <span>Download &amp; Install</span>
+            </button>
+            <button
+              onClick={() => setAvailableUpdateNotification(null)}
+              className="px-3 py-1.5 rounded-xl bg-white/[0.06] hover:bg-white/[0.1] text-slate-300 font-semibold transition"
+            >
+              Later
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* First-Launch Telemetry Opt-in Modal (YuE 2 style) */}
+      {showFirstLaunchTelemetryModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fadeIn select-none font-sans">
+          <div className="relative w-full max-w-lg bg-[#14151B] border border-violet-500/30 rounded-3xl p-6 shadow-2xl text-slate-100 space-y-5">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-2xl bg-violet-600/20 border border-violet-500/30 flex items-center justify-center text-violet-400">
+                <ShieldCheck size={24} />
+              </div>
+              <div>
+                <h3 className="font-extrabold text-base text-white tracking-tight">
+                  Welcome to Genux AI Studio
+                </h3>
+                <p className="text-xs text-violet-400 font-mono">
+                  ANONYMOUS PERFORMANCE &amp; TELEMETRY (OPTIONAL)
+                </p>
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-300 leading-relaxed">
+              To help us maximize TensorRT and Wan 2.1 inference speed across diverse NVIDIA GPUs (RTX 3060, 4070, 4080, 5080, 5090), Genux AI can anonymously sync performance metrics with our backend portal.
+            </p>
+
+            <div className="p-3.5 rounded-2xl bg-black/40 border border-white/[0.06] space-y-2 text-[11px] text-slate-300">
+              <div className="flex items-center gap-2 text-emerald-400 font-bold">
+                <CheckCircle2 size={13} />
+                <span>100% Private &amp; Offline Capable</span>
+              </div>
+              <p className="text-slate-400 pl-5 leading-normal">
+                Your imported video clips, character portraits, prompts, and recasting outputs <strong>never leave your machine</strong>. Only anonymous hardware specs (GPU, RAM, VRAM), error traces, and download counts are shared.
+              </p>
+              <div className="text-[10px] text-slate-500 pl-5">
+                💡 You can change this at any time in <strong>Settings &gt; Data Tracking &amp; Privacy</strong>.
+              </div>
+            </div>
+
+            <div className="flex flex-col sm:flex-row items-center justify-end gap-3 pt-2">
+              <button
+                onClick={() => {
+                  localStorage.setItem('genux_telemetry_prompt_seen', 'true');
+                  if (window.genuxNative?.saveSettings) {
+                    window.genuxNative.saveSettings({ telemetryOptIn: false, telemetryPromptSeen: true });
+                  }
+                  setShowFirstLaunchTelemetryModal(false);
+                }}
+                className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-white/[0.06] hover:bg-white/[0.1] text-slate-300 font-bold text-xs transition"
+              >
+                No Thanks (Keep Completely Offline)
+              </button>
+
+              <button
+                onClick={() => {
+                  localStorage.setItem('genux_telemetry_prompt_seen', 'true');
+                  if (window.genuxNative?.saveSettings) {
+                    window.genuxNative.saveSettings({ telemetryOptIn: true, telemetryPromptSeen: true });
+                  }
+                  if (window.genuxNative?.syncTelemetry) {
+                    window.genuxNative.syncTelemetry();
+                  }
+                  setShowFirstLaunchTelemetryModal(false);
+                }}
+                className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-violet-600 hover:bg-violet-500 text-white font-bold text-xs transition shadow-lg shadow-violet-600/30 flex items-center justify-center gap-1.5"
+              >
+                <CheckCircle2 size={14} />
+                <span>Opt-In &amp; Continue (Recommended)</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );

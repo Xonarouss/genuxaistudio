@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { 
   X, User, HardDrive, Cpu, Cloud, 
   Palette, Info, ExternalLink,
-  FolderOpen, AlertTriangle, HelpCircle
+  FolderOpen, AlertTriangle, HelpCircle,
+  RefreshCw, ShieldCheck, CheckCircle2, DownloadCloud, Activity
 } from 'lucide-react';
 
 export interface StudioSettings {
@@ -23,6 +24,7 @@ export interface StudioSettings {
   storagePath: string;
   exportPath: string;
   appearanceTheme: 'obsidian_dark' | 'midnight_purple' | 'cyber_cyan';
+  telemetryOptIn: boolean;
 }
 
 const DEFAULT_SETTINGS: StudioSettings = {
@@ -42,7 +44,8 @@ const DEFAULT_SETTINGS: StudioSettings = {
   openrouterModel: 'anthropic/claude-3.5-sonnet',
   storagePath: '~/.cache/genux/models',
   exportPath: 'Videos/Genux AI',
-  appearanceTheme: 'obsidian_dark'
+  appearanceTheme: 'obsidian_dark',
+  telemetryOptIn: false
 };
 
 interface SettingsModalProps {
@@ -68,6 +71,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   });
 
   const [savedSuccess, setSavedSuccess] = useState<boolean>(false);
+  const [appVersion, setAppVersion] = useState<string>('v1.0.4');
+  const [checkingAppUpdate, setCheckingAppUpdate] = useState<boolean>(false);
+  const [appUpdateResult, setAppUpdateResult] = useState<any>(null);
+  const [checkingModelUpdates, setCheckingModelUpdates] = useState<boolean>(false);
+  const [modelUpdatesList, setModelUpdatesList] = useState<any[]>([]);
+  const [syncingTelemetry, setSyncingTelemetry] = useState<boolean>(false);
+  const [telemetrySyncMsg, setTelemetrySyncMsg] = useState<string>('');
 
   useEffect(() => {
     if (isOpen) {
@@ -92,7 +102,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       window.genuxNative.saveSettings({
         modelsDir: settings.storagePath,
         exportDir: settings.exportPath,
-        modelProfile: settings.modelProfile
+        modelProfile: settings.modelProfile,
+        telemetryOptIn: settings.telemetryOptIn
       });
     }
 
@@ -113,13 +124,20 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               ...prev,
               storagePath: s.modelsDir || prev.storagePath,
               exportPath: s.exportDir || prev.exportPath,
-              modelProfile: s.modelProfile || prev.modelProfile
+              modelProfile: s.modelProfile || prev.modelProfile,
+              telemetryOptIn: !!s.telemetryOptIn
             }));
+            if (s.appVersion) setAppVersion(`v${s.appVersion}`);
           }
         })
         .catch((err: any) => {
           console.warn('Could not read native settings:', err);
         });
+    }
+    if (window.genuxNative?.getAppVersion) {
+      window.genuxNative.getAppVersion().then((v: string) => {
+        if (v) setAppVersion(`v${v}`);
+      });
     }
   }, []);
 
@@ -159,6 +177,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
   const navItems = [
     { id: 'account', label: 'Account', subtext: 'The name that signs this studio', icon: User },
+    { id: 'updates', label: 'Updates & Version', subtext: 'Check repo & model weights', icon: RefreshCw },
+    { id: 'telemetry', label: 'Data Tracking & Privacy', subtext: 'Anonymous performance sync', icon: ShieldCheck },
     { id: 'models', label: 'Models', subtext: 'Which quantisation each role runs...', icon: HardDrive },
     { id: 'engine', label: 'Local engine', subtext: 'Launch flags and diagnostics of the...', icon: Cpu },
     { id: 'providers', label: 'Providers', subtext: 'OpenRouter, OpenAI, Gemini & Gemma 2', icon: Cloud },
@@ -281,6 +301,253 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     <p className="text-[11px] text-slate-500 mt-1">
                       This name is stored on this machine and is only used to label the studio.
                     </p>
+                  </div>
+                </div>
+              )}
+
+              {/* UPDATES TAB */}
+              {activeTab === 'updates' && (
+                <div className="space-y-5">
+                  {/* Current App Version Card */}
+                  <div className="p-4 rounded-2xl bg-[#1B1D26] border border-white/[0.08] flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-violet-600/20 border border-violet-500/30 flex items-center justify-center text-violet-400">
+                        <Activity size={20} />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-extrabold text-sm text-white">Genux AI Studio</span>
+                          <span className="px-2 py-0.5 rounded-full bg-violet-500/10 border border-violet-500/30 text-violet-400 font-mono text-[10px] font-bold">
+                            {appVersion}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-slate-400 mt-0.5">
+                          Windows x64 Native Workstation (TensorRT Blackwell FP8 Edition)
+                        </p>
+                      </div>
+                    </div>
+
+                    <button
+                      onClick={async () => {
+                        setCheckingAppUpdate(true);
+                        setAppUpdateResult(null);
+                        try {
+                          if (window.genuxNative?.checkAppUpdate) {
+                            const res = await window.genuxNative.checkAppUpdate();
+                            setAppUpdateResult(res);
+                          } else {
+                            setAppUpdateResult({ hasUpdate: false, message: 'You are on the latest version.' });
+                          }
+                        } catch (e: any) {
+                          setAppUpdateResult({ hasUpdate: false, message: e.message || 'Error checking updates' });
+                        } finally {
+                          setCheckingAppUpdate(false);
+                        }
+                      }}
+                      disabled={checkingAppUpdate}
+                      className="px-4 py-2 rounded-xl bg-violet-600 hover:bg-violet-500 text-white font-bold text-xs flex items-center gap-2 transition disabled:opacity-50 shadow-md shadow-violet-600/20"
+                    >
+                      <RefreshCw size={13} className={checkingAppUpdate ? 'animate-spin' : ''} />
+                      <span>{checkingAppUpdate ? 'Checking Repository...' : 'Check for Updates'}</span>
+                    </button>
+                  </div>
+
+                  {/* App Update Result Banner */}
+                  {appUpdateResult && (
+                    <div className={`p-4 rounded-2xl border ${appUpdateResult.hasUpdate ? 'bg-emerald-950/30 border-emerald-500/40' : 'bg-slate-900 border-white/[0.08]'}`}>
+                      {appUpdateResult.hasUpdate ? (
+                        <div className="space-y-3">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2 text-emerald-400 font-bold text-xs">
+                              <CheckCircle2 size={16} />
+                              <span>New Update Available: {appUpdateResult.latestVersion}</span>
+                            </div>
+                            <span className="text-[10px] font-mono text-slate-400">Release: {appUpdateResult.releaseName}</span>
+                          </div>
+                          <p className="text-[11px] text-slate-300 leading-relaxed whitespace-pre-wrap">
+                            {appUpdateResult.releaseNotes}
+                          </p>
+                          <button
+                            onClick={() => {
+                              if (window.genuxNative?.downloadAndInstallUpdate) {
+                                window.genuxNative.downloadAndInstallUpdate(appUpdateResult.downloadUrl);
+                              } else if (window.genuxNative?.openExternal) {
+                                window.genuxNative.openExternal(appUpdateResult.downloadUrl);
+                              }
+                            }}
+                            className="py-2 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center gap-2 transition shadow-lg shadow-emerald-600/20"
+                          >
+                            <DownloadCloud size={14} />
+                            <span>Download &amp; Install Update</span>
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-2 text-slate-300 text-xs">
+                          <CheckCircle2 size={15} className="text-emerald-400 shrink-0" />
+                          <span>{appUpdateResult.message || `You are on the latest version (${appVersion}).`}</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* AI Model Updates Section */}
+                  <div className="p-4 rounded-2xl bg-[#1B1D26] border border-white/[0.08] space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h5 className="font-bold text-xs text-white">AI Model Weight Revisions</h5>
+                        <p className="text-[11px] text-slate-400">Verify local Wan 2.1, SAM 2.1, and Gemma checkpoints against upstream</p>
+                      </div>
+                      <button
+                        onClick={async () => {
+                          setCheckingModelUpdates(true);
+                          try {
+                            if (window.genuxNative?.checkModelUpdates) {
+                              const list = await window.genuxNative.checkModelUpdates();
+                              setModelUpdatesList(list);
+                            }
+                          } finally {
+                            setCheckingModelUpdates(false);
+                          }
+                        }}
+                        disabled={checkingModelUpdates}
+                        className="px-3 py-1.5 rounded-xl bg-white/[0.06] hover:bg-white/[0.1] text-white font-bold text-xs flex items-center gap-1.5 transition"
+                      >
+                        <RefreshCw size={12} className={checkingModelUpdates ? 'animate-spin' : ''} />
+                        <span>Check Model Weights</span>
+                      </button>
+                    </div>
+
+                    {modelUpdatesList.length > 0 && (
+                      <div className="space-y-1.5 pt-2 border-t border-white/[0.06]">
+                        {modelUpdatesList.map((m: any) => (
+                          <div key={m.id} className="flex items-center justify-between text-xs py-1.5 px-3 rounded-lg bg-black/30">
+                            <span className="text-slate-300 font-semibold">{m.name}</span>
+                            <div className="flex items-center gap-2">
+                              <span className="text-[10px] font-mono text-slate-400">{m.currentRev}</span>
+                              <span className="text-[10px] font-bold text-emerald-400 flex items-center gap-1">
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                                {m.status}
+                              </span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Automatic Background Info */}
+                  <div className="p-3.5 rounded-xl bg-violet-950/20 border border-violet-500/20 text-[11px] text-slate-400 flex items-start gap-2.5">
+                    <Info size={14} className="text-violet-400 shrink-0 mt-0.5" />
+                    <span className="leading-relaxed">
+                      Genux AI automatically checks for releases and model updates in the background on every launch. If an update is detected, you will be notified automatically with zero manual effort required.
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {/* TELEMETRY & PRIVACY TAB */}
+              {activeTab === 'telemetry' && (
+                <div className="space-y-5">
+                  {/* Opt-In Switch Card */}
+                  <div className="p-4 rounded-2xl bg-[#1B1D26] border border-white/[0.08] flex items-center justify-between">
+                    <div className="space-y-1 max-w-md">
+                      <div className="flex items-center gap-2">
+                        <ShieldCheck size={16} className={settings.telemetryOptIn ? 'text-emerald-400' : 'text-slate-500'} />
+                        <span className="font-bold text-xs text-white">Anonymous Performance &amp; Error Telemetry</span>
+                      </div>
+                      <p className="text-[11px] text-slate-400 leading-relaxed">
+                        Sync anonymous GPU hardware specs, crash reports, and downloads count with the backend portal to help optimize local inference across NVIDIA GPUs.
+                      </p>
+                    </div>
+
+                    <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                      <input
+                        type="checkbox"
+                        checked={settings.telemetryOptIn}
+                        onChange={(e) => {
+                          const next = e.target.checked;
+                          setSettings({ ...settings, telemetryOptIn: next });
+                          if (window.genuxNative?.saveSettings) {
+                            window.genuxNative.saveSettings({ telemetryOptIn: next });
+                          }
+                          if (next && window.genuxNative?.syncTelemetry) {
+                            window.genuxNative.syncTelemetry();
+                          }
+                        }}
+                        className="sr-only peer"
+                      />
+                      <div className="w-11 h-6 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-600"></div>
+                    </label>
+                  </div>
+
+                  {/* Connection Status Badge */}
+                  <div className="p-3.5 rounded-xl bg-black/40 border border-white/[0.06] flex items-center justify-between text-xs font-mono">
+                    <div className="flex items-center gap-2">
+                      <span className={`w-2 h-2 rounded-full ${settings.telemetryOptIn ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500'}`} />
+                      <span className="text-slate-300">
+                        {settings.telemetryOptIn ? 'Status: Active Sync to Backend Portal (http://localhost:3001)' : 'Status: 100% Offline (Local Only)'}
+                      </span>
+                    </div>
+                    {settings.telemetryOptIn && (
+                      <button
+                        onClick={async () => {
+                          setSyncingTelemetry(true);
+                          setTelemetrySyncMsg('');
+                          try {
+                            if (window.genuxNative?.syncTelemetry) {
+                              await window.genuxNative.syncTelemetry();
+                              setTelemetrySyncMsg('Telemetry synced successfully!');
+                              setTimeout(() => setTelemetrySyncMsg(''), 3000);
+                            }
+                          } catch (e: any) {
+                            setTelemetrySyncMsg('Sync failed: Offline or unreachable');
+                          } finally {
+                            setSyncingTelemetry(false);
+                          }
+                        }}
+                        disabled={syncingTelemetry}
+                        className="px-2.5 py-1 rounded-lg bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-400 font-bold text-[11px] border border-emerald-500/30 transition flex items-center gap-1"
+                      >
+                        <RefreshCw size={10} className={syncingTelemetry ? 'animate-spin' : ''} />
+                        <span>{syncingTelemetry ? 'Syncing...' : 'Sync Now'}</span>
+                      </button>
+                    )}
+                  </div>
+
+                  {telemetrySyncMsg && (
+                    <div className="text-[11px] text-emerald-400 font-mono px-2">
+                      ✓ {telemetrySyncMsg}
+                    </div>
+                  )}
+
+                  {/* Privacy Transparency Cards */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                    <div className="p-3.5 rounded-xl bg-emerald-950/20 border border-emerald-500/20">
+                      <div className="font-bold text-emerald-400 mb-1 flex items-center gap-1">
+                        <CheckCircle2 size={12} />
+                        <span>What is shared (Anonymous)</span>
+                      </div>
+                      <ul className="space-y-1 text-[11px] text-slate-400 list-disc list-inside">
+                        <li>GPU Card model &amp; VRAM (e.g. RTX 4080 16GB)</li>
+                        <li>System Memory &amp; CPU architecture</li>
+                        <li>Uncaught crash logs &amp; stack traces</li>
+                        <li>Video downloads &amp; model count</li>
+                        <li>General country / IP (resolved on backend)</li>
+                      </ul>
+                    </div>
+
+                    <div className="p-3.5 rounded-xl bg-red-950/20 border border-red-500/20">
+                      <div className="font-bold text-red-400 mb-1 flex items-center gap-1">
+                        <X size={12} />
+                        <span>What is NEVER shared</span>
+                      </div>
+                      <ul className="space-y-1 text-[11px] text-slate-400 list-disc list-inside">
+                        <li>Your imported videos &amp; TikTok clips</li>
+                        <li>Uploaded character faces &amp; digital twins</li>
+                        <li>Recasting prompts or generated video outputs</li>
+                        <li>Personal file paths, names, or accounts</li>
+                      </ul>
+                    </div>
                   </div>
                 </div>
               )}
@@ -584,7 +851,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       </a>
 
                       <a
-                        href="https://github.com/timoncool/YuE2-Studio"
+                        href="https://github.com/Xonarouss/genuxaistudio"
                         target="_blank"
                         rel="noreferrer"
                         className="px-3 py-1.5 rounded-xl bg-white/[0.06] hover:bg-white/[0.1] text-white font-bold text-[11px] transition flex items-center gap-1.5"

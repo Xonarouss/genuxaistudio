@@ -1,0 +1,609 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full bg-slate-950 text-slate-100">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Genux AI — Master Admin Portal (Google 2FA Protected)</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 46'><path fill='%23863bff' d='M25.946 44.938c-.664.845-2.021.375-2.021-.698V33.937a2.26 2.26 0 0 0-2.262-2.262H10.287c-.92 0-1.456-1.04-.92-1.788l7.48-10.471c1.07-1.497 0-3.578-1.842-3.578H1.237c-.92 0-1.456-1.04-.92-1.788L10.013.474c.214-.297.556-.474.92-.474h28.894c.92 0 1.456 1.04.92 1.788l-7.48 10.471c-1.07 1.498 0 3.579 1.842 3.579h11.377c.943 0 1.473 1.088.89 1.83L25.947 44.94z'/></svg>">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: { 50: '#f5f3ff', 500: '#8b5cf6', 600: '#7c3aed', 700: '#6d28d9' }
+          }
+        }
+      }
+    }
+  </script>
+</head>
+<body class="h-full font-sans antialiased bg-slate-950 text-slate-100 flex flex-col">
+
+  <!-- Container for App State -->
+  <div id="app" class="flex-1 flex flex-col">
+    <!-- Loading Screen -->
+    <div id="loadingView" class="flex-1 flex items-center justify-center">
+      <div class="flex flex-col items-center gap-4">
+        <div class="w-12 h-12 rounded-2xl bg-indigo-600/20 border border-indigo-500/40 flex items-center justify-center animate-spin">
+          <i data-lucide="loader-2" class="w-6 h-6 text-indigo-400"></i>
+        </div>
+        <p class="text-sm font-semibold text-slate-400 tracking-wide">Connecting to Genux Security Core...</p>
+      </div>
+    </div>
+
+    <!-- View 1: Master Setup Wizard (Only Shown If 0 Accounts Exist) -->
+    <div id="setupView" class="hidden flex-1 flex items-center justify-center p-4">
+      <div class="w-full max-w-lg bg-slate-900 border border-indigo-500/30 rounded-3xl p-8 shadow-2xl relative overflow-hidden">
+        <div class="absolute top-0 right-0 w-64 h-64 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none"></div>
+        
+        <div class="flex items-center gap-3 mb-6">
+          <div class="w-12 h-12 rounded-2xl bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400">
+            <i data-lucide="shield-alert" class="w-6 h-6"></i>
+          </div>
+          <div>
+            <h1 class="text-xl font-bold text-white">Initialize Master Admin</h1>
+            <p class="text-xs text-indigo-400 font-mono">1-ACCOUNT HARD LOCK • GOOGLE 2FA ENFORCED</p>
+          </div>
+        </div>
+
+        <div class="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-300 text-xs mb-6 leading-relaxed">
+          <strong>Security Notice:</strong> Only <strong>1 master account</strong> can ever exist. Once this initial setup is verified, the registration interface will permanently self-lock.
+        </div>
+
+        <!-- Step 1: Credentials Form -->
+        <div id="setupStep1" class="space-y-4">
+          <div>
+            <label class="block text-xs font-semibold text-slate-300 mb-1.5">Master Username</label>
+            <input type="text" id="setupUsername" class="w-full px-4 py-3 rounded-xl bg-slate-800/80 border border-slate-700 text-sm focus:border-indigo-500 focus:outline-none" placeholder="e.g. admin" value="admin">
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-300 mb-1.5">Master Password (Min 8 characters)</label>
+            <input type="password" id="setupPassword" class="w-full px-4 py-3 rounded-xl bg-slate-800/80 border border-slate-700 text-sm focus:border-indigo-500 focus:outline-none" placeholder="••••••••••••">
+          </div>
+          <button id="btnGenerate2fa" class="w-full py-3.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-sm transition shadow-lg shadow-indigo-600/20 flex items-center justify-center gap-2">
+            <i data-lucide="qr-code" class="w-4 h-4"></i>
+            <span>Generate Google 2FA QR Code</span>
+          </button>
+        </div>
+
+        <!-- Step 2: Google 2FA Scan & Confirm -->
+        <div id="setupStep2" class="hidden space-y-5 pt-2">
+          <div class="text-center">
+            <p class="text-xs text-slate-300 mb-3">Scan this QR code with <strong>Google Authenticator</strong>:</p>
+            <div class="inline-block p-3 bg-white rounded-2xl shadow-xl">
+              <img id="qrCodeImg" class="w-48 h-48 mx-auto" alt="2FA QR Code">
+            </div>
+            <p class="text-[11px] font-mono text-slate-400 mt-2">Secret: <span id="secretKeyText" class="text-indigo-400 font-bold select-all"></span></p>
+          </div>
+
+          <div>
+            <label class="block text-xs font-semibold text-slate-300 mb-1.5 text-center">Enter 6-Digit Google Authenticator Code</label>
+            <input type="text" id="setupTotpCode" maxlength="6" class="w-full text-center tracking-[0.5em] font-mono text-xl py-3 rounded-xl bg-slate-800 border border-slate-700 text-indigo-400 font-bold focus:border-indigo-500 focus:outline-none" placeholder="000000">
+          </div>
+
+          <button id="btnVerifySetup" class="w-full py-3.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-sm transition shadow-lg shadow-emerald-600/20 flex items-center justify-center gap-2">
+            <i data-lucide="lock" class="w-4 h-4"></i>
+            <span>Confirm & Permanently Seal Registration</span>
+          </button>
+        </div>
+
+        <div id="setupError" class="hidden mt-4 p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-xs"></div>
+      </div>
+    </div>
+
+    <!-- View 2: Login View (Shown When Master Account Exists) -->
+    <div id="loginView" class="hidden flex-1 flex items-center justify-center p-4">
+      <div class="w-full max-w-md bg-slate-900 border border-slate-800 rounded-3xl p-8 shadow-2xl relative">
+        <div class="flex items-center gap-3 mb-6">
+          <div class="w-12 h-12 rounded-2xl bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400">
+            <i data-lucide="lock" class="w-6 h-6"></i>
+          </div>
+          <div>
+            <h1 class="text-xl font-bold text-white">Genux Admin Portal</h1>
+            <p class="text-xs text-slate-400">SECURED WITH GOOGLE AUTHENTICATOR</p>
+          </div>
+        </div>
+
+        <form id="loginForm" class="space-y-4">
+          <div>
+            <label class="block text-xs font-semibold text-slate-300 mb-1.5">Username</label>
+            <input type="text" id="loginUsername" required class="w-full px-4 py-3 rounded-xl bg-slate-800 border border-slate-700 text-sm focus:border-indigo-500 focus:outline-none">
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-300 mb-1.5">Password</label>
+            <input type="password" id="loginPassword" required class="w-full px-4 py-3 rounded-xl bg-slate-800 border border-slate-700 text-sm focus:border-indigo-500 focus:outline-none">
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-300 mb-1.5 flex items-center justify-between">
+              <span>Google Authenticator 2FA Code</span>
+              <span class="text-[10px] text-indigo-400 font-mono">6 DIGITS</span>
+            </label>
+            <input type="text" id="loginTotp" maxlength="6" required class="w-full text-center tracking-[0.4em] font-mono text-lg py-2.5 rounded-xl bg-slate-800 border border-slate-700 text-indigo-400 font-bold focus:border-indigo-500 focus:outline-none" placeholder="••••••">
+          </div>
+
+          <button type="submit" id="btnLogin" class="w-full py-3.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-sm transition shadow-lg shadow-indigo-600/20 flex items-center justify-center gap-2">
+            <i data-lucide="log-in" class="w-4 h-4"></i>
+            <span>Authenticate Session</span>
+          </button>
+        </form>
+
+        <div id="loginError" class="hidden mt-4 p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-xs"></div>
+      </div>
+    </div>
+
+    <!-- View 3: Full Admin Telemetry & Metrics Dashboard -->
+    <div id="dashboardView" class="hidden flex-1 flex flex-col">
+      <!-- Top Navigation Bar -->
+      <header class="border-b border-slate-800 bg-slate-900/80 backdrop-blur-md px-6 py-4 flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <div class="w-9 h-9 rounded-xl bg-indigo-600 flex items-center justify-center text-white font-bold text-base shadow-md shadow-indigo-600/30">
+            G
+          </div>
+          <div>
+            <div class="font-bold text-sm tracking-tight text-white flex items-center gap-2">
+              <span>GENUX BACKEND PORTAL</span>
+              <span class="px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[10px] font-mono font-bold flex items-center gap-1">
+                <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                2FA ACTIVE
+              </span>
+            </div>
+            <div class="text-[10px] font-mono text-slate-400">TELEMETRY & FLEET INTELLIGENCE</div>
+          </div>
+        </div>
+
+        <!-- Controls -->
+        <div class="flex items-center gap-3">
+          <button id="btnRefresh" class="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs text-slate-300 font-semibold flex items-center gap-1.5 transition">
+            <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>
+            <span>Refresh</span>
+          </button>
+          <div class="h-4 w-px bg-slate-800"></div>
+          <button id="btnLogout" class="px-3 py-1.5 rounded-xl bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 text-xs text-red-400 font-semibold flex items-center gap-1.5 transition">
+            <i data-lucide="log-out" class="w-3.5 h-3.5"></i>
+            <span>Sign Out</span>
+          </button>
+        </div>
+      </header>
+
+      <!-- Subheader Tabs -->
+      <div class="border-b border-slate-800 bg-slate-900/40 px-6 py-2 flex items-center gap-4 text-xs font-semibold">
+        <button class="dash-tab active text-indigo-400 border-b-2 border-indigo-500 pb-2 pt-1" data-tab="overview">Overview</button>
+        <button class="dash-tab text-slate-400 hover:text-slate-200 pb-2 pt-1 transition" data-tab="gpus">Video Cards & Hardware</button>
+        <button class="dash-tab text-slate-400 hover:text-slate-200 pb-2 pt-1 transition" data-tab="geos">Geographics & IPs</button>
+        <button class="dash-tab text-slate-400 hover:text-slate-200 pb-2 pt-1 transition" data-tab="errors">Error Logs & Diagnostics</button>
+      </div>
+
+      <!-- Main Dashboard Content -->
+      <main class="flex-1 p-6 overflow-y-auto max-w-7xl w-full mx-auto space-y-6">
+        
+        <!-- Tab 1: Overview -->
+        <div id="tab-overview" class="tab-pane space-y-6">
+          <!-- KPI Stat Cards -->
+          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div class="p-5 rounded-2xl bg-slate-900 border border-slate-800 flex items-center justify-between">
+              <div>
+                <div class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Active App Clients</div>
+                <div id="kpiClients" class="text-2xl font-extrabold text-white">0</div>
+                <div class="text-[10px] text-emerald-400 font-mono mt-1">● Opted-in users</div>
+              </div>
+              <div class="p-3 rounded-xl bg-indigo-500/10 text-indigo-400">
+                <i data-lucide="users" class="w-6 h-6"></i>
+              </div>
+            </div>
+
+            <div class="p-5 rounded-2xl bg-slate-900 border border-slate-800 flex items-center justify-between">
+              <div>
+                <div class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Total Pings / Syncs</div>
+                <div id="kpiPings" class="text-2xl font-extrabold text-white">0</div>
+                <div class="text-[10px] text-slate-500 font-mono mt-1">Live telemetry hits</div>
+              </div>
+              <div class="p-3 rounded-xl bg-blue-500/10 text-blue-400">
+                <i data-lucide="activity" class="w-6 h-6"></i>
+              </div>
+            </div>
+
+            <div class="p-5 rounded-2xl bg-slate-900 border border-slate-800 flex items-center justify-between">
+              <div>
+                <div class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Downloads Completed</div>
+                <div id="kpiDownloads" class="text-2xl font-extrabold text-white">0</div>
+                <div class="text-[10px] text-emerald-400 font-mono mt-1">Videos & Model Weights</div>
+              </div>
+              <div class="p-3 rounded-xl bg-emerald-500/10 text-emerald-400">
+                <i data-lucide="download-cloud" class="w-6 h-6"></i>
+              </div>
+            </div>
+
+            <div class="p-5 rounded-2xl bg-slate-900 border border-slate-800 flex items-center justify-between">
+              <div>
+                <div class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Reported Errors</div>
+                <div id="kpiErrors" class="text-2xl font-extrabold text-white">0</div>
+                <div class="text-[10px] text-amber-400 font-mono mt-1">Caught exceptions</div>
+              </div>
+              <div class="p-3 rounded-xl bg-amber-500/10 text-amber-400">
+                <i data-lucide="alert-triangle" class="w-6 h-6"></i>
+              </div>
+            </div>
+          </div>
+
+          <!-- Dual Column: Top GPUs & Top Locations -->
+          <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <!-- Top GPUs -->
+            <div class="p-6 rounded-2xl bg-slate-900 border border-slate-800">
+              <h3 class="text-sm font-bold text-white mb-4 flex items-center gap-2">
+                <i data-lucide="cpu" class="w-4 h-4 text-indigo-400"></i>
+                <span>Most Used Video Cards (GPUs)</span>
+              </h3>
+              <div id="overviewGpuList" class="space-y-3">
+                <p class="text-xs text-slate-500">No client telemetry synced yet.</p>
+              </div>
+            </div>
+
+            <!-- Top Locations -->
+            <div class="p-6 rounded-2xl bg-slate-900 border border-slate-800">
+              <h3 class="text-sm font-bold text-white mb-4 flex items-center gap-2">
+                <i data-lucide="globe" class="w-4 h-4 text-indigo-400"></i>
+                <span>Active User Locations</span>
+              </h3>
+              <div id="overviewLocationList" class="space-y-3">
+                <p class="text-xs text-slate-500">No client telemetry synced yet.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tab 2: Video Cards & Specs -->
+        <div id="tab-gpus" class="tab-pane hidden space-y-6">
+          <div class="p-6 rounded-2xl bg-slate-900 border border-slate-800">
+            <h3 class="text-base font-bold text-white mb-4">Detailed Hardware Fleet Breakdown</h3>
+            <div class="overflow-x-auto">
+              <table class="w-full text-left text-xs text-slate-300">
+                <thead class="text-slate-400 border-b border-slate-800 bg-slate-800/40 uppercase text-[10px] font-mono">
+                  <tr>
+                    <th class="py-3 px-4">GPU Model</th>
+                    <th class="py-3 px-4">Active Machines</th>
+                    <th class="py-3 px-4">Fleet Share</th>
+                    <th class="py-3 px-4">Relative Visual</th>
+                  </tr>
+                </thead>
+                <tbody id="detailedGpuTable" class="divide-y divide-slate-800/60"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tab 3: Geographics & IPs -->
+        <div id="tab-geos" class="tab-pane hidden space-y-6">
+          <div class="p-6 rounded-2xl bg-slate-900 border border-slate-800">
+            <h3 class="text-base font-bold text-white mb-4">Connected Clients Log (IP & Location)</h3>
+            <div class="overflow-x-auto">
+              <table class="w-full text-left text-xs text-slate-300">
+                <thead class="text-slate-400 border-b border-slate-800 bg-slate-800/40 uppercase text-[10px] font-mono">
+                  <tr>
+                    <th class="py-3 px-4">IP Address</th>
+                    <th class="py-3 px-4">Country & City</th>
+                    <th class="py-3 px-4">GPU & VRAM</th>
+                    <th class="py-3 px-4">System RAM</th>
+                    <th class="py-3 px-4">App Version</th>
+                    <th class="py-3 px-4">Downloads</th>
+                    <th class="py-3 px-4">Last Sync</th>
+                  </tr>
+                </thead>
+                <tbody id="clientsTable" class="divide-y divide-slate-800/60 font-mono"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tab 4: Error Logs -->
+        <div id="tab-errors" class="tab-pane hidden space-y-6">
+          <div class="p-6 rounded-2xl bg-slate-900 border border-slate-800">
+            <div class="flex items-center justify-between mb-4">
+              <div>
+                <h3 class="text-base font-bold text-white">Client Error Diagnostics</h3>
+                <p class="text-xs text-slate-400">Crash traces and uncaught exceptions submitted by opted-in clients</p>
+              </div>
+              <button id="btnClearErrors" class="px-3 py-1.5 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 text-xs font-semibold border border-red-500/20">
+                Clear Error Log
+              </button>
+            </div>
+
+            <div id="errorLogsContainer" class="space-y-3 font-mono text-xs">
+              <p class="text-slate-500">No runtime errors logged. Fleet is healthy.</p>
+            </div>
+          </div>
+        </div>
+
+      </main>
+    </div>
+  </div>
+
+  <script>
+    // State management
+    let state = {
+      isInitialized: false,
+      token: localStorage.getItem('genux_admin_token') || null,
+      currentTab: 'overview'
+    };
+
+    // Initialize UI
+    async function init() {
+      try {
+        const res = await fetch('/api/auth/status');
+        const data = await res.json();
+        state.isInitialized = data.isInitialized;
+
+        document.getElementById('loadingView').classList.add('hidden');
+
+        if (!state.isInitialized) {
+          showView('setupView');
+        } else if (!state.token) {
+          showView('loginView');
+        } else {
+          showView('dashboardView');
+          loadMetrics();
+        }
+      } catch (err) {
+        console.error('Initialization error:', err);
+      }
+      lucide.createIcons();
+    }
+
+    function showView(viewId) {
+      ['loadingView', 'setupView', 'loginView', 'dashboardView'].forEach(id => {
+        document.getElementById(id).classList.add('hidden');
+      });
+      document.getElementById(viewId).classList.remove('hidden');
+      lucide.createIcons();
+    }
+
+    // Step 1: Generate 2FA Secret
+    document.getElementById('btnGenerate2fa')?.addEventListener('click', async () => {
+      const username = document.getElementById('setupUsername').value.trim();
+      const password = document.getElementById('setupPassword').value;
+      const errorDiv = document.getElementById('setupError');
+      errorDiv.classList.add('hidden');
+
+      if (!username || password.length < 8) {
+        errorDiv.textContent = 'Password must be at least 8 characters long.';
+        errorDiv.classList.remove('hidden');
+        return;
+      }
+
+      try {
+        const res = await fetch('/api/auth/register-init', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, password })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+
+        document.getElementById('qrCodeImg').src = data.qrCodeDataUrl;
+        document.getElementById('secretKeyText').textContent = data.secret;
+        document.getElementById('setupStep1').classList.add('hidden');
+        document.getElementById('setupStep2').classList.remove('hidden');
+      } catch (err) {
+        errorDiv.textContent = err.message;
+        errorDiv.classList.remove('hidden');
+      }
+    });
+
+    // Step 2: Verify Setup & Lock
+    document.getElementById('btnVerifySetup')?.addEventListener('click', async () => {
+      const token = document.getElementById('setupTotpCode').value.trim();
+      const errorDiv = document.getElementById('setupError');
+      errorDiv.classList.add('hidden');
+
+      try {
+        const res = await fetch('/api/auth/register-verify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+
+        state.token = data.token;
+        localStorage.setItem('genux_admin_token', data.token);
+        showView('dashboardView');
+        loadMetrics();
+      } catch (err) {
+        errorDiv.textContent = err.message;
+        errorDiv.classList.remove('hidden');
+      }
+    });
+
+    // Login Form Submit
+    document.getElementById('loginForm')?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const username = document.getElementById('loginUsername').value.trim();
+      const password = document.getElementById('loginPassword').value;
+      const token = document.getElementById('loginTotp').value.trim();
+      const errorDiv = document.getElementById('loginError');
+      errorDiv.classList.add('hidden');
+
+      try {
+        const res = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, password, token })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+
+        state.token = data.token;
+        localStorage.setItem('genux_admin_token', data.token);
+        showView('dashboardView');
+        loadMetrics();
+      } catch (err) {
+        errorDiv.textContent = err.message;
+        errorDiv.classList.remove('hidden');
+      }
+    });
+
+    // Logout
+    document.getElementById('btnLogout')?.addEventListener('click', () => {
+      state.token = null;
+      localStorage.removeItem('genux_admin_token');
+      showView('loginView');
+    });
+
+    // Refresh Metrics
+    document.getElementById('btnRefresh')?.addEventListener('click', () => {
+      loadMetrics();
+    });
+
+    // Tab Switching
+    document.querySelectorAll('.dash-tab').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.dash-tab').forEach(b => {
+          b.classList.remove('text-indigo-400', 'border-b-2', 'border-indigo-500');
+          b.classList.add('text-slate-400');
+        });
+        btn.classList.add('text-indigo-400', 'border-b-2', 'border-indigo-500');
+        btn.classList.remove('text-slate-400');
+
+        const target = btn.dataset.tab;
+        document.querySelectorAll('.tab-pane').forEach(p => p.classList.add('hidden'));
+        document.getElementById(`tab-${target}`).classList.remove('hidden');
+        lucide.createIcons();
+      });
+    });
+
+    // Load Metrics
+    async function loadMetrics() {
+      if (!state.token) return;
+      try {
+        const res = await fetch('/api/admin/metrics', {
+          headers: { 'Authorization': `Bearer ${state.token}` }
+        });
+        if (res.status === 401) {
+          state.token = null;
+          localStorage.removeItem('genux_admin_token');
+          showView('loginView');
+          return;
+        }
+        const data = await res.json();
+
+        // Populate KPIs
+        document.getElementById('kpiClients').textContent = data.overview.totalClients || 0;
+        document.getElementById('kpiPings').textContent = data.overview.totalPings || 0;
+        document.getElementById('kpiDownloads').textContent = data.overview.totalDownloads || 0;
+        document.getElementById('kpiErrors').textContent = data.overview.totalErrors || 0;
+
+        // Populate Top GPUs
+        const gpuList = document.getElementById('overviewGpuList');
+        if (data.gpuBreakdown.length === 0) {
+          gpuList.innerHTML = '<p class="text-xs text-slate-500">No GPU telemetry logged yet.</p>';
+        } else {
+          gpuList.innerHTML = data.gpuBreakdown.map(g => `
+            <div>
+              <div class="flex justify-between text-xs mb-1">
+                <span class="font-semibold text-slate-200">${g.model}</span>
+                <span class="text-indigo-400 font-bold font-mono">${g.count} machines (${g.percentage}%)</span>
+              </div>
+              <div class="w-full bg-slate-800 rounded-full h-2">
+                <div class="bg-indigo-500 h-2 rounded-full" style="width: ${Math.max(g.percentage, 5)}%"></div>
+              </div>
+            </div>
+          `).join('');
+        }
+
+        // Populate Detailed GPU Table
+        const detailedGpuTable = document.getElementById('detailedGpuTable');
+        detailedGpuTable.innerHTML = data.gpuBreakdown.map(g => `
+          <tr class="hover:bg-slate-800/30">
+            <td class="py-3 px-4 font-bold text-white">${g.model}</td>
+            <td class="py-3 px-4 font-mono">${g.count}</td>
+            <td class="py-3 px-4 font-mono text-indigo-400 font-bold">${g.percentage}%</td>
+            <td class="py-3 px-4">
+              <div class="w-32 bg-slate-800 rounded-full h-1.5">
+                <div class="bg-indigo-500 h-1.5 rounded-full" style="width: ${g.percentage}%"></div>
+              </div>
+            </td>
+          </tr>
+        `).join('');
+
+        // Populate Top Locations
+        const locList = document.getElementById('overviewLocationList');
+        if (data.locationsBreakdown.length === 0) {
+          locList.innerHTML = '<p class="text-xs text-slate-500">No geographic data logged yet.</p>';
+        } else {
+          locList.innerHTML = data.locationsBreakdown.map(l => `
+            <div>
+              <div class="flex justify-between text-xs mb-1">
+                <span class="font-semibold text-slate-200">${l.country}</span>
+                <span class="text-emerald-400 font-bold font-mono">${l.count} (${l.percentage}%)</span>
+              </div>
+              <div class="w-full bg-slate-800 rounded-full h-2">
+                <div class="bg-emerald-500 h-2 rounded-full" style="width: ${Math.max(l.percentage, 5)}%"></div>
+              </div>
+            </div>
+          `).join('');
+        }
+
+        // Populate Clients Table
+        const clientsTable = document.getElementById('clientsTable');
+        clientsTable.innerHTML = (data.recentClients || []).map(c => `
+          <tr class="hover:bg-slate-800/30">
+            <td class="py-3 px-4 text-indigo-300 font-semibold">${c.ip}</td>
+            <td class="py-3 px-4 text-slate-200">${c.country} (${c.city})</td>
+            <td class="py-3 px-4 text-slate-300 font-bold">${c.gpu} <span class="text-[10px] text-slate-500">(${c.vram})</span></td>
+            <td class="py-3 px-4 text-slate-400">${c.ram}</td>
+            <td class="py-3 px-4"><span class="px-2 py-0.5 rounded bg-slate-800 text-slate-300 text-[10px]">${c.appVersion}</span></td>
+            <td class="py-3 px-4 text-emerald-400 font-bold">${c.downloadsCount || 0}</td>
+            <td class="py-3 px-4 text-slate-400 text-[11px]">${new Date(c.lastSeen).toLocaleTimeString()}</td>
+          </tr>
+        `).join('');
+
+        // Populate Error Logs
+        const errorLogsContainer = document.getElementById('errorLogsContainer');
+        if (!data.recentErrors || data.recentErrors.length === 0) {
+          errorLogsContainer.innerHTML = '<p class="text-slate-500">No runtime errors logged. Fleet is healthy.</p>';
+        } else {
+          errorLogsContainer.innerHTML = data.recentErrors.map(e => `
+            <div class="p-3.5 rounded-xl bg-red-500/10 border border-red-500/20 text-xs">
+              <div class="flex items-center justify-between text-red-400 font-bold mb-1">
+                <span>${e.message}</span>
+                <span class="text-[10px] text-slate-400 font-mono">${new Date(e.timestamp).toLocaleString()}</span>
+              </div>
+              <div class="text-[11px] text-slate-400 font-mono mb-2">
+                Client: ${e.ip} (${e.country}) • GPU: ${e.gpu} • Version: ${e.appVersion}
+              </div>
+              ${e.stack ? `<pre class="p-2 rounded bg-slate-950/80 text-[10px] text-slate-300 overflow-x-auto">${e.stack}</pre>` : ''}
+            </div>
+          `).join('');
+        }
+
+      } catch (err) {
+        console.error('Failed to load metrics:', err);
+      }
+      lucide.createIcons();
+    }
+
+    // Clear Errors
+    document.getElementById('btnClearErrors')?.addEventListener('click', async () => {
+      if (!confirm('Clear all client error logs?')) return;
+      try {
+        await fetch('/api/admin/clear-errors', {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${state.token}` }
+        });
+        loadMetrics();
+      } catch (e) {
+        console.error(e);
+      }
+    });
+
+    // Auto-refresh every 12 seconds
+    setInterval(() => {
+      if (state.token) loadMetrics();
+    }, 12000);
+
+    init();
+  </script>
+</body>
+</html>
