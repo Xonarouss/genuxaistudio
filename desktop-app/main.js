@@ -1186,7 +1186,10 @@ const EMBEDDED_PYTHON_URL = `https://www.python.org/ftp/python/${EMBEDDED_PYTHON
 const GET_PIP_URL = 'https://bootstrap.pypa.io/get-pip.py';
 
 function getEmbeddedPythonDir() {
-  return path.join(app.getPath('userData'), 'embedded-python');
+  // Install embedded Python inside the user's selected models directory
+  // so it lives alongside AI models (Storage & Paths setting)
+  const modelsDir = getEffectiveModelsDir();
+  return path.join(modelsDir, '.python-runtime');
 }
 
 function getEmbeddedPythonExe() {
@@ -1609,8 +1612,9 @@ ipcMain.handle('setup:installPythonEnv', async () => {
     const minimal = [
       'numpy>=1.26.0',
       'Pillow>=10.0.0',
-      'torch>=2.4.0+cu124; sys_platform == "win32"',
-      'torchvision>=0.19.0+cu124; sys_platform == "win32"',
+      'torch>=2.4.0',
+      'torchvision>=0.19.0',
+      'torchaudio>=2.4.0',
       'diffusers>=0.31.0',
       'transformers>=4.44.0',
       'accelerate>=0.34.0',

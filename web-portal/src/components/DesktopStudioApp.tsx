@@ -760,14 +760,16 @@ export const DesktopStudioApp: React.FC = () => {
     }
 
     // Check first-launch anonymous telemetry prompt (strictly once)
-    const seen = localStorage.getItem('genux_telemetry_prompt_seen');
-    if (!seen) {
+    // Check BOTH localStorage (fast) and native settings (persistent across reinstalls)
+    const seenLocal = localStorage.getItem('genux_telemetry_prompt_seen');
+    if (!seenLocal) {
       if (window.genuxNative?.getSettings) {
         window.genuxNative.getSettings().then((s: any) => {
-          if (!s?.telemetryPromptSeen) {
-            setShowFirstLaunchTelemetryModal(true);
-          } else {
+          if (s?.telemetryPromptSeen) {
+            // Already answered — sync localStorage so we never ask again
             localStorage.setItem('genux_telemetry_prompt_seen', 'true');
+          } else {
+            setShowFirstLaunchTelemetryModal(true);
           }
         }).catch(() => {
           setShowFirstLaunchTelemetryModal(true);
@@ -2798,7 +2800,9 @@ export const DesktopStudioApp: React.FC = () => {
             <div className="flex flex-col sm:flex-row items-center justify-end gap-3 pt-2">
               <button
                 onClick={() => {
+                  // Set BOTH localStorage (instant) and native settings (persistent)
                   localStorage.setItem('genux_telemetry_prompt_seen', 'true');
+                  localStorage.setItem('genux_telemetry_opt_in', 'false');
                   if (window.genuxNative?.saveSettings) {
                     window.genuxNative.saveSettings({ telemetryOptIn: false, telemetryPromptSeen: true });
                   }
@@ -2811,7 +2815,9 @@ export const DesktopStudioApp: React.FC = () => {
 
               <button
                 onClick={() => {
+                  // Set BOTH localStorage (instant) and native settings (persistent)
                   localStorage.setItem('genux_telemetry_prompt_seen', 'true');
+                  localStorage.setItem('genux_telemetry_opt_in', 'true');
                   if (window.genuxNative?.saveSettings) {
                     window.genuxNative.saveSettings({ telemetryOptIn: true, telemetryPromptSeen: true });
                   }
