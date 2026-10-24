@@ -11,6 +11,9 @@ dist/
 dist-ui/
 dist-package/
 build/
+# Exception: electron-builder packaging assets MUST be in git for CI to work
+!desktop-app/build/
+!desktop-app/build/**
 bin/*.exe
 bin/*.dll
 bin/*.lib
