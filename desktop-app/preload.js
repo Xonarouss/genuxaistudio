@@ -75,6 +75,22 @@ contextBridge.exposeInMainWorld('genuxNative', {
 
   // Anonymous Telemetry & Sync APIs
   syncTelemetry: (extra) => ipcRenderer.invoke('telemetry:sync', extra),
-  logClientError: (err) => ipcRenderer.invoke('telemetry:logError', err)
+  logClientError: (err) => ipcRenderer.invoke('telemetry:logError', err),
+
+  // Python AI Environment Setup (auto-installs pip packages for real inference)
+  checkPythonEnv: () => ipcRenderer.invoke('setup:checkPythonEnv'),
+  installPythonEnv: () => ipcRenderer.invoke('setup:installPythonEnv'),
+  onPipProgress: (callback) => {
+    const handler = (_, data) => callback(data);
+    ipcRenderer.on('setup:pipProgress', handler);
+    return () => ipcRenderer.removeListener('setup:pipProgress', handler);
+  },
+
+  // Pipeline result (output video path, timing etc.)
+  onPipelineResult: (callback) => {
+    const handler = (_, data) => callback(data);
+    ipcRenderer.on('pipeline:result', handler);
+    return () => ipcRenderer.removeListener('pipeline:result', handler);
+  }
 });
 

@@ -59,6 +59,11 @@ declare global {
       logClientError?: (err: any) => Promise<any>;
       getVaultCharacters?: () => Promise<any>;
       saveVaultCharacters?: (chars: any) => Promise<any>;
+      // Python AI Environment Setup
+      checkPythonEnv?: () => Promise<any>;
+      installPythonEnv?: () => Promise<any>;
+      onPipProgress?: (callback: (msg: string) => void) => () => void;
+      onPipelineResult?: (callback: (data: any) => void) => () => void;
     };
   }
 }
@@ -1933,29 +1938,40 @@ export const DesktopStudioApp: React.FC = () => {
                   rows={3}
                   value={sceneDirectorPrompt}
                   onChange={(e) => setSceneDirectorPrompt(e.target.value)}
-                  placeholder="e.g. Change street to neon rainy Tokyo, change car to matte black Ferrari, change jacket to cyber armor, lock 1:1 camera physics..."
+                  placeholder="e.g. Change car to matte black Lamborghini Urus, replace trees with cherry blossoms, change street to flooded Tokyo, add heavy rain, swap sky to blood orange sunset..."
                   className="w-full min-h-[75px] bg-[#11141F] border border-white/[0.12] focus:border-emerald-400 rounded-xl p-3 text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-emerald-400/40 font-sans leading-relaxed transition"
                 />
                 
-                {/* 1-Click Quick Preset Chips */}
-                <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
-                  {[
-                    { label: '⚡ Cyber Tokyo', text: 'Neon rainy Tokyo street, wet pavement reflections, cyberpunk atmosphere' },
-                    { label: '🎬 Film Noir', text: 'High-contrast 35mm film noir, dramatic volumetric shadows, moody fog' },
-                    { label: '🌅 Golden Hour', text: 'Golden hour sunset lighting, warm rim light, cinematic lens flares' },
-                    { label: '🏎️ Matte Hypercar', text: 'Change vehicle to matte black hypercar with glowing LED accents' }
-                  ].map(chip => (
-                    <button
-                      key={chip.label}
-                      onClick={() => setSceneDirectorPrompt(chip.text)}
-                      className="px-2 py-0.5 rounded-md bg-white/[0.04] hover:bg-white/[0.1] border border-white/[0.06] text-[10px] text-slate-300 hover:text-white transition font-mono"
-                    >
-                      {chip.label}
-                    </button>
-                  ))}
+                {/* 1-Click Quick Preset Chips — Background / Scene editing */}
+                <div className="space-y-1.5">
+                  <p className="text-[9px] font-mono text-slate-500 uppercase tracking-wider">Quick presets — click to set scene</p>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    {[
+                      { label: '⚡ Cyber Tokyo', text: 'Neon rainy Tokyo street at night, wet asphalt reflections, cyberpunk LED signs, fog' },
+                      { label: '🎬 Film Noir', text: 'High-contrast 35mm film noir, dramatic shadows, moody fog, black and white with deep grain' },
+                      { label: '🌅 Golden Hour', text: 'Magic golden hour sunset, warm orange rim lighting, lens flares, long soft shadows' },
+                      { label: '🌧 Heavy Rain', text: 'Pouring rain storm, wet roads, puddle reflections, dark dramatic sky, rain streaks on lens' },
+                      { label: '❄️ Blizzard', text: 'Snowstorm blizzard, white-out visibility, frozen breath, ice-covered ground, grey sky' },
+                      { label: '🌴 Tropical', text: 'Lush tropical rainforest, giant palm trees, exotic flowers, golden dappled sunlight' },
+                      { label: '🏎️ Hypercar', text: 'Replace all vehicles with matte black Lamborghini Urus with glowing LED accents' },
+                      { label: '🌃 Midnight City', text: 'Midnight urban skyline, neon reflections on wet tarmac, empty streets, orange street lights' },
+                      { label: '🌸 Cherry Blossom', text: 'Cherry blossom park in spring, pink petals falling, soft bokeh light, Japanese garden' },
+                      { label: '🏜 Desert Dunes', text: 'Vast Sahara desert dunes, heat haze shimmer, golden sand, clear sky, epic scale' },
+                      { label: '🌊 Ocean Storm', text: 'Dramatic ocean cliffside, stormy waves crashing, dark grey sky, sea spray mist' },
+                      { label: '🔥 Cinematic Fire', text: 'Epic action scene fire and embers, explosive background, thick black smoke, orange glow' },
+                    ].map(chip => (
+                      <button
+                        key={chip.label}
+                        onClick={() => setSceneDirectorPrompt(chip.text)}
+                        className="px-2 py-0.5 rounded-md bg-white/[0.04] hover:bg-white/[0.1] border border-white/[0.06] text-[10px] text-slate-300 hover:text-white transition font-mono"
+                      >
+                        {chip.label}
+                      </button>
+                    ))}
+                  </div>
                 </div>
                 <p className="text-[10px] text-slate-500 leading-snug">
-                  Gemma 2 Director modifies scene objects, background, and cars while locking character motion and facial likeness.
+                  Wan 2.1 Director replaces scene objects, vehicles, weather, trees, buildings and backgrounds — character motion and identity is locked with SAM 2.1 masks.
                 </p>
               </div>
 

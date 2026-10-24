@@ -1248,6 +1248,8 @@ ipcMain.handle('engine:startRecastJob', async (_, jobConfig) => {
       cameraMode:        jobConfig.cameraMode || 'original',
       trimStart:         jobConfig.trimStart || 0,
       trimEnd:           jobConfig.trimEnd || 10,
+      // Multi-character attachments: [{tag, name, imagePath, charId}, ...]
+      characterAttachments: jobConfig.characterAttachments || [],
       modelsDir,
       wan21ModelPath:    path.join(modelsDir, MODEL_CATALOG.wan21.filename),
       sam2ModelPath:     path.join(modelsDir, MODEL_CATALOG.sam2.filename),
@@ -1364,6 +1366,89 @@ ipcMain.handle('engine:cancelRecastJob', () => {
     return true;
   }
   return false;
+});
+
+// -------------------------------------------------------------------
+// IPC Handlers: Python Environment Setup
+// Installs pip packages required by genux_infer.py
+// -------------------------------------------------------------------
+
+/** Check Python + key packages availability */
+ipcMain.handle('setup:checkPythonEnv', async () => {
+  const pyExe = findPythonExe();
+  if (!pyExe) return { pythonFound: false, packages: {} };
+
+  const checkScript = `
+import sys, importlib
+pkgs = ['torch','diffusers','transformers','accelerate','safetensors','onnxruntime','cv2','PIL','numpy']
+results = {}
+for p in pkgs:
+    try:
+        m = importlib.import_module(p)
+        results[p] = getattr(m, '__version__', 'ok')
+    except ImportError:
+        results[p] = None
+cuda = False
+try:
+    import torch
+    cuda = torch.cuda.is_available()
+    results['cuda_device'] = torch.cuda.get_device_name(0) if cuda else None
+except: pass
+import json, sys
+print(json.dumps({'python': sys.version, 'cuda': cuda, 'packages': results}))
+`.trim();
+
+  return new Promise((resolve) => {
+    const proc = require('child_process').spawnSync(pyExe, ['-c', checkScript], { timeout: 15000 });
+    try {
+      const out = (proc.stdout || '').toString().trim();
+      const data = JSON.parse(out);
+      resolve({ pythonFound: true, ...data });
+    } catch {
+      resolve({ pythonFound: true, packages: {}, parseError: true });
+    }
+  });
+});
+
+/** Install Python packages from requirements.txt */
+ipcMain.handle('setup:installPythonEnv', async () => {
+  const pyExe = findPythonExe();
+  if (!pyExe) {
+    return { success: false, error: 'Python not found. Install Python 3.10+ from python.org first.' };
+  }
+
+  const requirementsPath = path.join(__dirname, '..', 'engine-cpp', 'python', 'requirements.txt');
+  if (!fs.existsSync(requirementsPath)) {
+    return { success: false, error: `requirements.txt not found at ${requirementsPath}` };
+  }
+
+  return new Promise((resolve) => {
+    const proc = spawn(pyExe, [
+      '-m', 'pip', 'install', '-r', requirementsPath,
+      '--extra-index-url', 'https://download.pytorch.org/whl/cu124',
+      '--progress-bar', 'on'
+    ], { stdio: ['ignore', 'pipe', 'pipe'] });
+
+    let log = '';
+
+    proc.stdout.on('data', (d) => {
+      const msg = d.toString();
+      log += msg;
+      if (mainWindow) mainWindow.webContents.send('setup:pipProgress', msg.trim());
+    });
+    proc.stderr.on('data', (d) => {
+      const msg = d.toString();
+      log += msg;
+      if (mainWindow) mainWindow.webContents.send('setup:pipProgress', msg.trim());
+    });
+
+    proc.on('close', (code) => {
+      resolve({ success: code === 0, exitCode: code, log });
+    });
+    proc.on('error', (err) => {
+      resolve({ success: false, error: err.message, log });
+    });
+  });
 });
 
 // -------------------------------------------------------------------

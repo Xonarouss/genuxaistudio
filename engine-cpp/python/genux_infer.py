@@ -184,10 +184,52 @@ def run_dwpose(frames_dir, dwpose_path):
 
 
 # ---------------------------------------------------------------------------
-# Stage 3: Gemma 2B director via llama.cpp (GPU-offloaded)
+# Stage 3: Composite prompt builder — multi-character + scene/background
 # ---------------------------------------------------------------------------
-def run_gemma_director(gemma_path, user_prompt, scene_prompt):
-    enhanced = user_prompt
+def build_composite_prompt(user_prompt: str, scene_prompt: str, char_attachments: list) -> str:
+    """
+    Merges recast prompt + multi-character @attachment references + scene director
+    into one rich diffusion prompt for Wan 2.1.
+    """
+    parts = [user_prompt.strip()]
+
+    # Resolve each @attachment tag with character identity notes
+    for att in char_attachments:
+        tag = att.get("tag", "")
+        name = att.get("name", tag)
+        img  = att.get("imagePath", "")
+        if tag and tag in user_prompt:
+            if img and Path(img).exists():
+                parts.append(
+                    f"{tag} ({name}): match exact facial identity, skin tone, hair, "
+                    f"and body proportions from reference portrait at {Path(img).name}"
+                )
+            else:
+                parts.append(f"{tag} ({name}): preserve character identity and likeness")
+
+    # Append scene / background directives
+    if scene_prompt.strip():
+        parts.append(f"Scene & Background: {scene_prompt.strip()}")
+
+    # Quality baseline
+    parts.append(
+        "8K resolution, photorealistic cinematic lighting, temporal coherence, "
+        "volumetric shadows, seamless motion blur, master quality"
+    )
+    return ", ".join(parts)
+
+
+# ---------------------------------------------------------------------------
+# Stage 3b: Gemma 2B director via llama.cpp (GPU-offloaded)
+# ---------------------------------------------------------------------------
+def run_gemma_director(gemma_path, user_prompt: str, scene_prompt: str, char_attachments: list) -> str:
+    """
+    Calls llama.cpp (llama-cli) to run Gemma 2B Q4_K_M GGUF for prompt enhancement.
+    Falls back to build_composite_prompt if llama.cpp is not available.
+    """
+    # Build composite as our fallback and Gemma input
+    composite = build_composite_prompt(user_prompt, scene_prompt, char_attachments)
+    enhanced  = composite
 
     # Look for llama-cli binary in engine bin/ folder
     script_dir = Path(__file__).resolve().parent
@@ -203,39 +245,32 @@ def run_gemma_director(gemma_path, user_prompt, scene_prompt):
         try:
             system_prompt = (
                 "You are an elite cinematic director for Wan 2.1 video diffusion. "
-                "Enhance the user prompt into a vivid photorealistic directive. "
-                "Preserve @attachment references. Return ONLY the enhanced prompt."
+                "Enhance the composite prompt below into a vivid, photorealistic video directive. "
+                "PRESERVE all @attachment references and all Scene & Background descriptions. "
+                "Return ONLY the enhanced prompt, no preamble."
             )
             prompt_text = (
-                f"<start_of_turn>user\n{system_prompt}\n\nPrompt: {user_prompt}"
+                f"<start_of_turn>user\n{system_prompt}\n\nComposite:\n{composite}"
                 f"<end_of_turn>\n<start_of_turn>model\n"
             )
-            log(f"Gemma 2B: Running via llama.cpp CUDA ({gemma_path.stat().st_size // (1024*1024)} MB)...")
+            log(f"Gemma 2B: Enhancing {len(char_attachments)}-character composite via llama.cpp CUDA...")
             progress("Gemma Director", "Loading Gemma 2B Q4_K_M into llama.cpp CUDA...", 52, vram_mb=1500)
             result = subprocess.run(
                 [str(llama_bin), "-m", str(gemma_path), "-p", prompt_text,
-                 "-n", "256", "--temp", "0.7", "-ngl", "99",
+                 "-n", "384", "--temp", "0.7", "-ngl", "99",
                  "--no-display-prompt", "--quiet"],
-                capture_output=True, text=True, timeout=60
+                capture_output=True, text=True, timeout=90
             )
             if result.returncode == 0 and result.stdout.strip():
                 enhanced = result.stdout.strip()
                 log(f"Gemma 2B output: {enhanced[:120]}...")
             else:
-                log(f"llama.cpp exited {result.returncode} -- using heuristic enrichment.")
+                log(f"llama.cpp exited {result.returncode} -- using composite fallback.")
         except Exception as e:
-            log(f"Gemma 2B failed ({e}) -- using heuristic enrichment.")
+            log(f"Gemma 2B failed ({e}) -- using composite fallback.")
     else:
         reason = "not installed" if not gemma_path.exists() else "llama-cli not found"
-        log(f"Gemma 2B {reason} -- using built-in prompt enrichment.")
-
-    # Always append cinematic base tokens
-    base = (
-        ", 8K resolution, photorealistic cinematic lighting, temporal coherence, "
-        "volumetric shadows, seamless motion blur, Wan 2.1 FP8 Blackwell synthesis"
-    )
-    if base not in enhanced:
-        enhanced += base
+        log(f"Gemma 2B {reason} -- using built-in composite prompt ({len(char_attachments)} characters).")
 
     progress("Gemma Director", f"Scene conditioning ready: {enhanced[:80]}...", 60,
              vram_mb=get_vram_mb(), fps=65.0)
@@ -443,13 +478,15 @@ def run_pipeline(job):
     scene_prompt = job.get("scenePrompt", "")
     duration_s   = int(job.get("durationSeconds", 10))
     enable_rife  = job.get("enableRIFE60fps", True)
+    # Multi-character attachments: [{tag, name, imagePath, charId}, ...]
+    char_attachments = job.get("characterAttachments", [])
 
     sam2_path   = Path(job.get("sam2ModelPath",   str(models_dir / "sam2.1_hiera_large.pt")))
     dwpose_path = Path(job.get("dwposeModelPath", str(models_dir / "dw-ll_ucoco_384.onnx")))
     gemma_path  = Path(job.get("gemmaModelPath",  str(models_dir / "gemma-2-2b-it-Q4_K_M.gguf")))
     wan21_path  = Path(job.get("wan21ModelPath",  str(models_dir / "wan2.1_i2v_480p_14B_fp8_e4m3fn.safetensors")))
 
-    log(f"Genux Inference Worker | source={source_video.name} | duration={duration_s}s")
+    log(f"Genux Inference Worker | source={source_video.name} | duration={duration_s}s | characters={len(char_attachments)}")
 
     if not source_video.exists():
         error(f"Source video not found: {source_video}", recoverable=False)
@@ -477,7 +514,7 @@ def run_pipeline(job):
         keypoints = run_dwpose(frames_dir, dwpose_path)
         progress("DWPose", f"Keypoints for {len(keypoints)} frames", 42, fps=48.0)
 
-        enhanced = run_gemma_director(gemma_path, user_prompt, scene_prompt)
+        enhanced = run_gemma_director(gemma_path, user_prompt, scene_prompt, char_attachments)
         progress("Gemma Director", "Conditioning complete", 60)
 
         global _synthesis_t0

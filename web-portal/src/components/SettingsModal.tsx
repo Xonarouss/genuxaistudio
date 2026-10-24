@@ -1,10 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   X, User, HardDrive, Cpu, Cloud, 
   Palette, Info, ExternalLink,
   FolderOpen, AlertTriangle, HelpCircle,
   RefreshCw, ShieldCheck, CheckCircle2, DownloadCloud, Activity,
-  Download, Trash2
+  Download, Trash2, Terminal, Zap
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { type ModelItem, INITIAL_MODELS } from './ModelHubModal';
@@ -87,6 +87,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [modelCategoryFilter, setModelCategoryFilter] = useState<string>('all');
   const [isScanningModels, setIsScanningModels] = useState<boolean>(false);
   const [modelScanMessage, setModelScanMessage] = useState<string>('');
+
+  // Python AI Environment state
+  const [pythonEnv, setPythonEnv] = useState<any>(null);
+  const [checkingPython, setCheckingPython] = useState<boolean>(false);
+  const [installingPython, setInstallingPython] = useState<boolean>(false);
+  const [pipLog, setPipLog] = useState<string[]>([]);
+  const pipLogRef = useRef<HTMLDivElement>(null);
 
   const isGemmaInstalled = hubModels.some(m => m.id === 'gemma' && (m.status === 'installed' || m.status === 'detected_cache'));
 
@@ -703,6 +710,108 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               {/* 2. MODELS & QUANTISATION (Allow choosing higher model profiles) */}
               {activeTab === 'models' && (
                 <div className="space-y-5">
+
+                  {/* ── Python AI Inference Engine Setup ─────────────────── */}
+                  <div className="rounded-2xl border border-violet-500/30 bg-gradient-to-br from-violet-900/20 to-indigo-900/10 p-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 rounded-xl bg-violet-600/30 flex items-center justify-center">
+                          <Terminal size={15} className="text-violet-300" />
+                        </div>
+                        <div>
+                          <p className="text-xs font-bold text-violet-200">AI Inference Engine Setup</p>
+                          <p className="text-[10px] text-slate-400">PyTorch + diffusers + SAM 2 + ONNX Runtime CUDA</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {pythonEnv && (
+                          <span className={`text-[10px] font-mono px-2 py-0.5 rounded-full border ${
+                            pythonEnv.pythonFound
+                              ? pythonEnv.cuda
+                                ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300'
+                                : 'bg-amber-500/15 border-amber-500/40 text-amber-300'
+                              : 'bg-red-500/15 border-red-500/40 text-red-300'
+                          }`}>
+                            {pythonEnv.pythonFound
+                              ? pythonEnv.cuda ? `✓ CUDA: ${pythonEnv.packages?.cuda_device || 'Ready'}` : '⚠ No CUDA GPU'
+                              : '✗ Python not found'}
+                          </span>
+                        )}
+                        <button
+                          onClick={async () => {
+                            setCheckingPython(true);
+                            const result = await window.genuxNative?.checkPythonEnv?.();
+                            setPythonEnv(result || null);
+                            setCheckingPython(false);
+                          }}
+                          disabled={checkingPython}
+                          className="px-2.5 py-1.5 rounded-lg bg-white/[0.06] hover:bg-white/[0.1] border border-white/[0.08] text-[10px] text-slate-300 hover:text-white transition flex items-center gap-1.5"
+                        >
+                          <RefreshCw size={11} className={checkingPython ? 'animate-spin' : ''} />
+                          {checkingPython ? 'Checking...' : 'Check'}
+                        </button>
+                      </div>
+                    </div>
+
+                    {pythonEnv && pythonEnv.pythonFound && (
+                      <div className="grid grid-cols-4 gap-1.5">
+                        {[['torch', 'PyTorch'], ['diffusers', 'Diffusers'], ['onnxruntime', 'ONNX RT'], ['cv2', 'OpenCV']].map(([key, label]) => (
+                          <div key={key} className={`rounded-lg p-2 text-center border ${
+                            pythonEnv.packages?.[key]
+                              ? 'bg-emerald-500/10 border-emerald-500/25 text-emerald-300'
+                              : 'bg-red-500/10 border-red-500/25 text-red-400'
+                          }`}>
+                            <p className="text-[9px] font-mono">{label}</p>
+                            <p className="text-[8px] mt-0.5 opacity-70">{pythonEnv.packages?.[key] || 'missing'}</p>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {!pythonEnv?.pythonFound && (
+                      <div className="text-[10px] text-slate-400 flex items-start gap-2">
+                        <AlertTriangle size={12} className="shrink-0 text-amber-400 mt-0.5" />
+                        <span>Python 3.10+ not found. <a href="https://python.org" className="text-violet-400 hover:underline">Download Python</a>, then click Install below. The AI inference engine requires Python for Wan 2.1, SAM 2.1, and DWPose.</span>
+                      </div>
+                    )}
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={async () => {
+                          setInstallingPython(true);
+                          setPipLog([]);
+                          const unsub = window.genuxNative?.onPipProgress?.((msg: string) => {
+                            setPipLog(prev => [...prev.slice(-80), msg]);
+                            if (pipLogRef.current) pipLogRef.current.scrollTop = pipLogRef.current.scrollHeight;
+                          });
+                          const result = await window.genuxNative?.installPythonEnv?.();
+                          unsub?.();
+                          setInstallingPython(false);
+                          if (result?.success) {
+                            const env = await window.genuxNative?.checkPythonEnv?.();
+                            setPythonEnv(env);
+                          }
+                        }}
+                        disabled={installingPython || !window.genuxNative?.installPythonEnv}
+                        className="flex-1 py-2 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white text-xs font-bold transition flex items-center justify-center gap-2 disabled:opacity-40"
+                      >
+                        <Zap size={13} className={installingPython ? 'animate-pulse' : ''} />
+                        {installingPython ? 'Installing packages via pip...' : 'Install / Update AI Engine Packages'}
+                      </button>
+                    </div>
+
+                    {(installingPython || pipLog.length > 0) && (
+                      <div
+                        ref={pipLogRef}
+                        className="bg-black/60 rounded-xl border border-white/[0.06] p-3 h-24 overflow-y-auto font-mono text-[9px] text-green-400 space-y-0.5"
+                      >
+                        {pipLog.map((line, i) => <div key={i}>{line}</div>)}
+                        {installingPython && <div className="animate-pulse">▌</div>}
+                      </div>
+                    )}
+                  </div>
+
+
                   
                   {/* Model Profile & Hardware Compatibility */}
                   <div className="space-y-1.5">
