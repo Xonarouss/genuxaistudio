@@ -18,11 +18,14 @@ export function App() {
   const [isPrivacyOpen, setIsPrivacyOpen] = useState<boolean>(false);
   const [isTermsOpen, setIsTermsOpen] = useState<boolean>(false);
 
-  // Check URL hash or query param for ?docs, ?privacy, ?terms
+  // Check URL hash, query param, or subdomain for ?docs, ?privacy, ?terms or docs.genuxai.io
   useEffect(() => {
     const s = window.location.search;
     const h = window.location.hash;
-    if (s.includes('docs') || h.includes('docs')) setIsDocsOpen(true);
+    const host = window.location.hostname.toLowerCase();
+    if (s.includes('docs') || h.includes('docs') || host.startsWith('docs.')) {
+      setIsDocsOpen(true);
+    }
     if (s.includes('privacy') || h.includes('privacy')) setIsPrivacyOpen(true);
     if (s.includes('terms') || h.includes('terms')) setIsTermsOpen(true);
   }, []);
@@ -34,6 +37,14 @@ export function App() {
       spread: 60,
       origin: { y: 0.7 }
     });
+  };
+
+  const handleOpenDocs = () => {
+    if (window.location.hostname.includes('genuxai.io') && !window.location.hostname.startsWith('docs.')) {
+      window.location.href = 'https://docs.genuxai.io';
+    } else {
+      setIsDocsOpen(true);
+    }
   };
 
   // If Privacy Policy view is active, render dedicated white page
@@ -62,13 +73,17 @@ export function App() {
     );
   }
 
-  // If Docs view is active, render the extensive documentation portal on localhost
+  // If Docs view is active, render the extensive documentation portal
   if (isDocsOpen) {
     return (
       <DocsPage 
         onBackToPortal={() => {
-          setIsDocsOpen(false);
-          window.history.pushState(null, '', window.location.pathname);
+          if (window.location.hostname.toLowerCase().startsWith('docs.')) {
+            window.location.href = window.location.protocol + '//' + window.location.hostname.replace(/^docs\./i, '');
+          } else {
+            setIsDocsOpen(false);
+            window.history.pushState(null, '', window.location.pathname);
+          }
         }}
         onDownloadExe={handleDownloadExe}
       />
@@ -80,7 +95,7 @@ export function App() {
       {/* Top Sticky Navbar */}
       <Navbar 
         onDownloadExe={handleDownloadExe}
-        onOpenDocs={() => setIsDocsOpen(true)}
+        onOpenDocs={handleOpenDocs}
       />
 
       {/* Main Informational Product Page */}
@@ -88,7 +103,7 @@ export function App() {
         {/* Hero Section */}
         <HeroSection 
           onDownloadExe={handleDownloadExe}
-          onOpenDocs={() => setIsDocsOpen(true)}
+          onOpenDocs={handleOpenDocs}
         />
 
         {/* The 6 AI Models Specs & Architecture */}
