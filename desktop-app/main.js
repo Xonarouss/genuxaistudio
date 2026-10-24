@@ -460,6 +460,11 @@ ipcMain.handle('settings:save', (_, newSettings) => {
   } catch (e) {
     console.error('[Settings] Error saving settings.json:', e);
   }
+  if (newSettings && newSettings.telemetryOptIn) {
+    setTimeout(() => {
+      performTelemetrySync({ event: 'opt_in' });
+    }, 500);
+  }
   return {
     ...appSettings,
     modelsDir: getEffectiveModelsDir(),
@@ -580,8 +585,9 @@ const MODEL_CATALOG = {
     id: 'wav2lip',
     name: 'Wav2Lip GAN Fast Lip Sync',
     filename: 'wav2lip_gan.pth',
-    sizeBytes: 272000000,
-    url: 'https://huggingface.co/numz/wav2lip_studio/resolve/main/Wav2Lip/wav2lip_gan.pth',
+    sizeBytes: 435801865,
+    url: 'https://huggingface.co/Nekochu/Wav2Lip/resolve/main/wav2lip_gan.pth',
+    backupUrl: 'https://huggingface.co/AOLCDROM/WAV2LIP-HQ-Updated-MIRROR/resolve/main/wav2lip_gan.pth',
     category: 'lipsync'
   }
 };
@@ -742,43 +748,53 @@ ipcMain.handle('downloader:startDownload', async (_, { modelId, customUrl }) => 
   };
   activeDownloads.set(modelId, downloadState);
 
-  // Kick off asynchronous download stream
-  downloadFileWithRedirects(downloadUrl, destPath, (prog) => {
-    downloadState.percent = prog.percent;
-    downloadState.speedMBps = prog.speedMBps;
-    downloadState.etaSeconds = prog.etaSeconds;
+  const runDownload = (targetUrl, isRetry = false) => {
+    downloadFileWithRedirects(targetUrl, destPath, (prog) => {
+      downloadState.percent = prog.percent;
+      downloadState.speedMBps = prog.speedMBps;
+      downloadState.etaSeconds = prog.etaSeconds;
 
-    if (mainWindow) {
-      mainWindow.webContents.send('downloader:progress', {
-        modelId,
-        ...prog,
-        localPath: destPath,
-        status: 'downloading'
-      });
-    }
-  }, 8, (r) => { downloadState.req = r; }).then((res) => {
-    activeDownloads.delete(modelId);
-    if (mainWindow) {
-      mainWindow.webContents.send('downloader:progress', {
-        modelId,
-        percent: 100,
-        speedMBps: '0',
-        etaSeconds: 0,
-        localPath: res.path,
-        status: 'completed'
-      });
-    }
-  }).catch((err) => {
-    activeDownloads.delete(modelId);
-    console.error(`[Downloader] Error downloading ${modelId}:`, err);
-    if (mainWindow) {
-      mainWindow.webContents.send('downloader:progress', {
-        modelId,
-        error: err.message,
-        status: 'error'
-      });
-    }
-  });
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('downloader:progress', {
+          modelId,
+          ...prog,
+          localPath: destPath,
+          status: 'downloading'
+        });
+      }
+    }, 8, (r) => { downloadState.req = r; }).then((res) => {
+      activeDownloads.delete(modelId);
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('downloader:progress', {
+          modelId,
+          percent: 100,
+          speedMBps: '0',
+          etaSeconds: 0,
+          localPath: res.path,
+          status: 'completed'
+        });
+      }
+      performTelemetrySync({ event: 'model_download', modelId, downloadedIncrement: 1 });
+    }).catch((err) => {
+      if (!isRetry && meta.backupUrl) {
+        console.log(`[Downloader] Primary URL failed for ${modelId}, falling back to backup mirror...`);
+        runDownload(meta.backupUrl, true);
+        return;
+      }
+      activeDownloads.delete(modelId);
+      console.error(`[Downloader] Error downloading ${modelId}:`, err);
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('downloader:progress', {
+          modelId,
+          error: err.message,
+          status: 'error'
+        });
+      }
+      performTelemetrySync({ event: 'model_download_failed', modelId, error: true, errorMessage: err.message });
+    });
+  };
+
+  runDownload(downloadUrl);
 
   return { success: true, destPath, message: 'Download initiated' };
 });
@@ -1113,62 +1129,152 @@ ipcMain.handle('social:getViralFeeds', async (_, { category, query } = {}) => {
 });
 
 // -------------------------------------------------------------------
-// IPC Handlers: YouTube Search with yt-dlp & Video Previews
+// IPC Handlers: Fast In-App YouTube Search (yt-dlp + Direct Web Fallback)
 // -------------------------------------------------------------------
+function fetchDirectYouTube(q) {
+  return new Promise((resolve) => {
+    try {
+      const searchUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(q)}`;
+      const req = https.get(searchUrl, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+          'Accept-Language': 'en-US,en;q=0.9'
+        },
+        timeout: 4000
+      }, (res) => {
+        let html = '';
+        res.on('data', chunk => { html += chunk; });
+        res.on('end', () => {
+          try {
+            const startMarker = 'var ytInitialData = ';
+            const idx = html.indexOf(startMarker);
+            if (idx === -1) return resolve([]);
+            const endIdx = html.indexOf(';</script>', idx);
+            if (endIdx === -1) return resolve([]);
+            const parsed = JSON.parse(html.substring(idx + startMarker.length, endIdx));
+            const out = [];
+
+            function walk(node) {
+              if (!node || typeof node !== 'object' || out.length >= 15) return;
+              if (node.videoId && node.title) {
+                const title = node.title?.runs?.[0]?.text || node.title?.simpleText || 'YouTube Video';
+                const channel = node.ownerText?.runs?.[0]?.text || node.shortBylineText?.runs?.[0]?.text || 'YouTube Creator';
+                const duration = node.lengthText?.simpleText || '0:30';
+                const views = node.viewCountText?.simpleText || node.shortViewCountText?.simpleText || 'Trending';
+                out.push({
+                  id: node.videoId,
+                  title,
+                  url: `https://www.youtube.com/watch?v=${node.videoId}`,
+                  channel,
+                  duration: 15,
+                  durationString: duration,
+                  thumbnail: `https://i.ytimg.com/vi/${node.videoId}/hqdefault.jpg`,
+                  views
+                });
+                return;
+              }
+              for (const key of Object.keys(node)) {
+                walk(node[key]);
+              }
+            }
+
+            walk(parsed);
+            resolve(out);
+          } catch {
+            resolve([]);
+          }
+        });
+      });
+      req.on('error', () => resolve([]));
+      req.on('timeout', () => { req.destroy(); resolve([]); });
+    } catch {
+      resolve([]);
+    }
+  });
+}
+
 ipcMain.handle('social:searchYouTube', async (_, query) => {
   const q = (query || '').trim();
   if (!q) return [];
   const ytdlpExe = getEffectiveYtDlp();
 
   return new Promise((resolve) => {
-    const args = [
-      `ytsearch25:${q}`,
-      '--dump-single-json',
-      '--flat-playlist',
-      '--no-warnings'
-    ];
+    let resolved = false;
+    const finish = (results) => {
+      if (resolved) return;
+      resolved = true;
+      resolve(results || []);
+    };
 
-    const child = spawn(ytdlpExe, args);
-    let rawJson = '';
+    try {
+      const args = [
+        `ytsearch15:${q}`,
+        '--flat-playlist',
+        '--print', '%(id)s\t%(title)s\t%(duration)s\t%(uploader)s\t%(view_count)s',
+        '--no-warnings'
+      ];
 
-    child.stdout.on('data', (d) => { rawJson += d.toString(); });
-    child.on('close', (code) => {
-      try {
-        if (code === 0 && rawJson.trim()) {
-          const parsed = JSON.parse(rawJson);
-          const entries = parsed.entries || [];
-          const results = entries.map(item => ({
-            id: item.id || `yt-${Date.now()}`,
-            title: item.title || 'YouTube Video',
-            url: item.url || `https://www.youtube.com/watch?v=${item.id}`,
-            channel: item.uploader || item.channel || 'YouTube Creator',
-            duration: item.duration || 15,
-            durationString: `${Math.floor((item.duration || 15)/60)}:${String((item.duration || 15)%60).padStart(2,'0')}`,
-            thumbnail: (item.thumbnails && item.thumbnails.length > 0) ? item.thumbnails[item.thumbnails.length - 1].url : `https://i.ytimg.com/vi/${item.id}/hqdefault.jpg`,
-            views: item.view_count ? `${(item.view_count / 1000000).toFixed(1)}M views` : 'Trending'
-          }));
-          return resolve(results);
+      const child = spawn(ytdlpExe, args);
+      let rawOutput = '';
+
+      child.stdout.on('data', (d) => { rawOutput += d.toString(); });
+
+      child.on('close', (code) => {
+        const lines = rawOutput.trim().split(/\r?\n/).filter(Boolean);
+        if (lines.length > 0) {
+          const results = lines.map(line => {
+            const parts = line.split('\t');
+            const id = (parts[0] || '').trim();
+            const title = (parts[1] || 'YouTube Video').trim();
+            const durSec = parseInt(parts[2], 10) || 15;
+            const uploader = (parts[3] || 'YouTube Creator').trim();
+            const viewsNum = parseInt(parts[4], 10) || 0;
+
+            const mins = Math.floor(durSec / 60);
+            const secs = String(durSec % 60).padStart(2, '0');
+            const durationString = `${mins}:${secs}`;
+
+            let views = 'Trending';
+            if (viewsNum >= 1000000) {
+              views = `${(viewsNum / 1000000).toFixed(1)}M views`;
+            } else if (viewsNum >= 1000) {
+              views = `${(viewsNum / 1000).toFixed(0)}K views`;
+            }
+
+            return {
+              id: id || `yt-${Date.now()}`,
+              title,
+              url: `https://www.youtube.com/watch?v=${id}`,
+              channel: uploader,
+              duration: durSec,
+              durationString,
+              thumbnail: `https://i.ytimg.com/vi/${id}/hqdefault.jpg`,
+              views
+            };
+          }).filter(item => item.id && item.id.length >= 6 && !item.id.startsWith('ytsearch'));
+
+          if (results.length > 0) {
+            return finish(results);
+          }
         }
-      } catch (e) {
-        console.error('Error parsing yt-dlp search JSON:', e);
-      }
-      // Fallback
-      resolve([
-        {
-          id: 'yt-drift-1',
-          title: `Viral: ${q} - Extreme Motion & Stunt`,
-          url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
-          channel: 'Viral Action POV',
-          duration: 12,
-          durationString: '0:12',
-          thumbnail: 'https://images.unsplash.com/photo-1517649763962-0c623266ddc0?w=600&auto=format&fit=crop&q=80',
-          views: '3.4M views'
-        }
-      ]);
-    });
-    child.on('error', () => {
-      resolve([]);
-    });
+
+        // Direct fallback if yt-dlp output was empty
+        fetchDirectYouTube(q).then(finish).catch(() => finish([]));
+      });
+
+      child.on('error', () => {
+        fetchDirectYouTube(q).then(finish).catch(() => finish([]));
+      });
+
+      // 6 second safety timeout
+      setTimeout(() => {
+        try { child.kill(); } catch (e) {}
+        fetchDirectYouTube(q).then(finish).catch(() => finish([]));
+      }, 6000);
+
+    } catch {
+      fetchDirectYouTube(q).then(finish).catch(() => finish([]));
+    }
   });
 });
 
@@ -1781,35 +1887,59 @@ ipcMain.handle('updater:checkModelUpdates', async () => {
 // IPC Handlers: Optional Telemetry & Fleet Performance Sync
 // -------------------------------------------------------------------
 let localClientErrorQueue = [];
+let detectedGpuCache = null;
+
+function getDetectedGpu() {
+  if (detectedGpuCache) return detectedGpuCache;
+  try {
+    const { execSync } = require('child_process');
+    const out = execSync('powershell -NoProfile -Command "(Get-CimInstance Win32_VideoController | Where-Object { $_.Name -like \'*NVIDIA*\' -or $_.Name -like \'*AMD*\' } | Select-Object -ExpandProperty Name) -join \', \'"', { timeout: 4000, encoding: 'utf8' }).trim();
+    if (out) {
+      detectedGpuCache = out;
+      return out;
+    }
+  } catch {}
+  return 'NVIDIA Workstation GPU';
+}
 
 async function performTelemetrySync(extra = {}) {
   try {
     if (!appSettings.telemetryOptIn) return; // Strict opt-in respect
 
-    // Use cachedTelemetry (the live nvidia-smi result), not the undefined cachedGpuTelemetry
-    const gpu = cachedTelemetry || {};
+    if (!appSettings.clientUuid) {
+      try {
+        const crypto = require('crypto');
+        appSettings.clientUuid = crypto.createHash('sha256').update(os.hostname() + os.userInfo().username + os.arch()).digest('hex').substring(0, 16);
+      } catch {
+        appSettings.clientUuid = 'client-' + Math.random().toString(36).substring(2, 10);
+      }
+    }
+
+    const gpuName = getDetectedGpu();
 
     const payload = JSON.stringify({
       clientUuid: appSettings.clientUuid,
-      gpu: gpu.gpuName || 'NVIDIA RTX GPU',
-      gpuShortName: gpu.gpuShortName || 'RTX GPU',
-      vram: gpu.nominalVramGb ? `${gpu.nominalVramGb} GB` : `${Math.round(os.totalmem() / (1024*1024*1024))} GB (estimate)`,
-      vramUsed: gpu.vramUsedGb ? `${gpu.vramUsedGb} GB` : '0 GB',
-      gpuUtil: gpu.gpuUtil ? `${gpu.gpuUtil}%` : '0%',
-      gpuTempC: gpu.gpuTempC || 0,
+      event: extra.event || 'heartbeat',
+      gpu: extra.gpu || gpuName,
+      vram: extra.vram || `${Math.round(os.totalmem() / (1024*1024*1024))} GB`,
       ram: `${Math.round(os.totalmem() / (1024 * 1024 * 1024))} GB`,
       cpu: (os.cpus()[0]?.model || 'x64 Multi-Core CPU').trim(),
       os: `${os.type()} ${os.release()}`,
       appVersion: APP_VERSION,
+      uptime: `${Math.round(process.uptime() / 60)}m`,
+      jobs: extra.jobs || 0,
       modelsInstalled: (() => {
-        const modelsDir = getEffectiveModelsDir();
-        return Object.entries(MODEL_CATALOG).filter(([, meta]) => {
-          const p = path.join(modelsDir, meta.filename);
-          return require('fs').existsSync(p) && require('fs').statSync(p).size > 1000000;
-        }).map(([id]) => id);
+        try {
+          const modelsDir = getEffectiveModelsDir();
+          return Object.entries(MODEL_CATALOG).filter(([, meta]) => {
+            const p = path.join(modelsDir, meta.filename);
+            return fs.existsSync(p) && fs.statSync(p).size > 1000000;
+          }).map(([id]) => id);
+        } catch { return []; }
       })(),
       downloadedIncrement: extra.downloadedIncrement || 0,
-      errors: localClientErrorQueue.splice(0, 10)
+      errors: localClientErrorQueue.splice(0, 10),
+      ...extra
     });
 
     const parsedUrl = new URL(BACKEND_PORTAL_URL);
@@ -1821,12 +1951,15 @@ async function performTelemetrySync(extra = {}) {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Content-Length': Buffer.byteLength(payload)
+        'Content-Length': Buffer.byteLength(payload),
+        'User-Agent': `GenuxAIStudio/${APP_VERSION}`
       },
-      timeout: 5000
+      timeout: 6000
     });
 
-    req.on('error', () => {}); // Silently ignore if portal unreachable
+    req.on('error', (err) => {
+      // Telemetry failure is completely non-blocking
+    });
     req.write(payload);
     req.end();
   } catch (e) {
@@ -1835,7 +1968,7 @@ async function performTelemetrySync(extra = {}) {
 }
 
 ipcMain.handle('telemetry:sync', async (_, extra) => {
-  await performTelemetrySync(extra || {});
+  await performTelemetrySync(extra || { event: 'manual_sync' });
   return { success: true };
 });
 
@@ -1850,14 +1983,14 @@ ipcMain.handle('telemetry:logError', async (_, errorInfo) => {
   if (localClientErrorQueue.length > 50) localClientErrorQueue.shift();
 
   if (appSettings.telemetryOptIn) {
-    performTelemetrySync();
+    performTelemetrySync({ event: 'error', error: true, errorMessage: errStr });
   }
   return true;
 });
 
 // Periodic sync every 5 minutes if opted in
 setInterval(() => {
-  performTelemetrySync();
+  performTelemetrySync({ event: 'heartbeat' });
 }, 5 * 60 * 1000);
 
 // Background Update Check (Auto-check on every launch)

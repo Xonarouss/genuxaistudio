@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Genux AI — Admin Portal</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -13,23 +13,34 @@
     :root {
       --bg:        #09090f;
       --surface:   #111118;
-      --surface2:  #18181f;
-      --border:    #252530;
+      --surface2:  #181822;
+      --border:    #252535;
+      --border-l:  #323246;
       --purple:    #7c3aed;
       --purple-l:  #a855f7;
+      --purple-bg: rgba(124,58,237,.12);
       --blue:      #3b82f6;
+      --blue-bg:   rgba(59,130,246,.12);
       --green:     #22c55e;
+      --green-bg:  rgba(34,197,94,.12);
       --amber:     #f59e0b;
       --red:       #ef4444;
-      --text:      #f1f5f9;
+      --text:      #f8fafc;
+      --text-dim:  #94a3b8;
       --muted:     #64748b;
       --sidebar-w: 240px;
     }
 
-    html, body { height: 100%; background: var(--bg); color: var(--text); font-family: 'Inter', sans-serif; font-size: 14px; overflow: hidden; }
+    html, body {
+      height: 100%;
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      font-size: 14px;
+      overflow: hidden;
+    }
 
-    /* ── Layout ─────────────────────────────────────────────────────── */
-    #app { display: flex; height: 100vh; }
+    #app { display: flex; height: 100vh; width: 100vw; overflow: hidden; }
 
     /* ── Sidebar ─────────────────────────────────────────────────────── */
     #sidebar {
@@ -39,56 +50,63 @@
       border-right: 1px solid var(--border);
       display: flex;
       flex-direction: column;
-      overflow: hidden;
+      user-select: none;
     }
     .sidebar-logo {
-      padding: 20px 20px 16px;
+      padding: 18px 20px 16px;
       border-bottom: 1px solid var(--border);
     }
-    .sidebar-logo .logo-mark {
+    .logo-mark {
       display: flex;
       align-items: center;
-      gap: 10px;
+      gap: 12px;
     }
     .logo-icon {
-      width: 32px; height: 32px;
-      background: linear-gradient(135deg, var(--purple), var(--blue));
-      border-radius: 8px;
+      width: 34px; height: 34px;
+      background: linear-gradient(135deg, #7c3aed, #3b82f6);
+      border-radius: 9px;
       display: flex; align-items: center; justify-content: center;
-      font-size: 16px;
+      font-size: 17px;
+      box-shadow: 0 4px 12px rgba(124,58,237,.3);
     }
     .logo-text { font-size: 15px; font-weight: 700; letter-spacing: -0.3px; }
-    .logo-sub { font-size: 10px; color: var(--muted); font-weight: 500; letter-spacing: 0.5px; text-transform: uppercase; margin-top: 1px; }
+    .logo-sub { font-size: 10px; color: var(--muted); font-weight: 600; letter-spacing: 0.6px; text-transform: uppercase; margin-top: 1px; }
 
-    .sidebar-nav { flex: 1; padding: 12px 10px; display: flex; flex-direction: column; gap: 2px; overflow-y: auto; }
-    .nav-section-label { font-size: 10px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.8px; padding: 8px 8px 4px; }
+    .sidebar-nav { flex: 1; padding: 14px 12px; display: flex; flex-direction: column; gap: 4px; overflow-y: auto; }
+    .nav-section-label { font-size: 10px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.9px; padding: 10px 10px 4px; }
     .nav-item {
-      display: flex; align-items: center; gap: 10px;
-      padding: 8px 10px; border-radius: 8px;
-      cursor: pointer; color: var(--muted);
+      display: flex; align-items: center; gap: 11px;
+      padding: 9px 12px; border-radius: 9px;
+      cursor: pointer; color: var(--text-dim);
       font-weight: 500; font-size: 13px;
-      transition: all .15s;
+      transition: all .15s ease;
       text-decoration: none;
     }
     .nav-item:hover { background: var(--surface2); color: var(--text); }
-    .nav-item.active { background: rgba(124,58,237,.15); color: var(--purple-l); }
+    .nav-item.active { background: var(--purple-bg); color: var(--purple-l); font-weight: 600; border: 1px solid rgba(124,58,237,.25); }
     .nav-item .nav-icon { font-size: 16px; width: 20px; text-align: center; }
     .nav-badge {
       margin-left: auto;
       background: var(--purple);
       color: #fff; font-size: 10px; font-weight: 700;
-      padding: 1px 6px; border-radius: 100px;
+      padding: 1px 7px; border-radius: 100px;
     }
 
     .sidebar-footer {
-      padding: 16px;
+      padding: 16px 20px;
       border-top: 1px solid var(--border);
+      background: rgba(17,17,24,.5);
     }
-    .status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); display: inline-block; margin-right: 6px; box-shadow: 0 0 8px var(--green); animation: pulse 2s infinite; }
-    @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:.4; } }
+    .status-dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: var(--green); display: inline-block; margin-right: 7px;
+      box-shadow: 0 0 10px var(--green);
+      animation: pulse 2s infinite ease-in-out;
+    }
+    @keyframes pulse { 0%,100% { opacity:1; transform:scale(1); } 50% { opacity:.4; transform:scale(0.85); } }
 
-    /* ── Main ────────────────────────────────────────────────────────── */
-    #main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+    /* ── Main Area ───────────────────────────────────────────────────── */
+    #main { flex: 1; display: flex; flex-direction: column; overflow: hidden; background: var(--bg); }
 
     #topbar {
       height: 56px;
@@ -97,26 +115,180 @@
       padding: 0 24px;
       background: var(--surface);
       flex-shrink: 0;
+      z-index: 10;
     }
-    .topbar-title { font-size: 16px; font-weight: 600; }
-    .topbar-right { display: flex; align-items: center; gap: 12px; }
+    .topbar-left { display: flex; align-items: center; gap: 14px; }
+    .topbar-title { font-size: 16px; font-weight: 700; letter-spacing: -0.2px; }
+    .live-indicator {
+      display: inline-flex; align-items: center; gap: 6px;
+      background: var(--green-bg); border: 1px solid rgba(34,197,94,.3);
+      color: var(--green); font-size: 11px; font-weight: 600;
+      padding: 3px 9px; border-radius: 100px;
+    }
+    .live-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); animation: pulse 1.5s infinite; }
+
+    .topbar-right { display: flex; align-items: center; gap: 10px; }
     .topbar-pill {
       background: var(--surface2);
       border: 1px solid var(--border);
       border-radius: 8px;
       padding: 6px 12px;
       font-size: 12px;
-      color: var(--muted);
+      color: var(--text-dim);
       display: flex; align-items: center; gap: 6px;
     }
     .topbar-pill span { color: var(--text); font-weight: 600; }
+    .btn-action {
+      background: var(--surface2); border: 1px solid var(--border);
+      color: var(--text); font-size: 12px; font-weight: 600;
+      padding: 6px 12px; border-radius: 8px; cursor: pointer;
+      display: flex; align-items: center; gap: 6px; transition: all .15s;
+    }
+    .btn-action:hover { border-color: var(--purple-l); background: var(--purple-bg); color: #fff; }
+    .btn-action:active { transform: scale(0.97); }
 
-    #content { flex: 1; overflow-y: auto; padding: 24px; display: flex; flex-direction: column; gap: 20px; }
+    #content {
+      flex: 1;
+      overflow-y: auto;
+      padding: 24px 28px 60px 28px;
+      display: flex; flex-direction: column; gap: 24px;
+    }
 
-    /* ── Login overlay ───────────────────────────────────────────────── */
+    /* ── KPI Grid ────────────────────────────────────────────────────── */
+    .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+    .kpi-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 20px;
+      position: relative;
+      overflow: hidden;
+      transition: all .2s ease;
+    }
+    .kpi-card:hover { border-color: var(--border-l); transform: translateY(-2px); }
+    .kpi-card::before {
+      content: '';
+      position: absolute; top: 0; left: 0; right: 0; height: 3px;
+      background: var(--accent, var(--purple));
+    }
+    .kpi-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+    .kpi-icon { font-size: 20px; width: 36px; height: 36px; border-radius: 10px; background: var(--surface2); display: flex; align-items: center; justify-content: center; }
+    .kpi-badge { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 6px; }
+    .kpi-value { font-size: 32px; font-weight: 800; letter-spacing: -1.2px; line-height: 1.1; }
+    .kpi-label { font-size: 12px; color: var(--text-dim); font-weight: 500; margin-top: 6px; }
+
+    /* ── Charts Grid ─────────────────────────────────────────────────── */
+    .charts-row { display: grid; grid-template-columns: 2fr 1fr; gap: 18px; }
+    .chart-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 20px 22px;
+      display: flex; flex-direction: column;
+    }
+    .chart-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+    .chart-title { font-size: 13px; font-weight: 600; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.6px; }
+    .chart-wrap { position: relative; flex: 1; min-height: 200px; }
+
+    /* ── Telemetry Table Card (Fixed Placement) ──────────────────────── */
+    .table-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 4px 20px rgba(0,0,0,.25);
+    }
+    .table-header {
+      padding: 16px 22px;
+      border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: space-between;
+      flex-wrap: wrap; gap: 12px;
+      background: rgba(24,24,34,.3);
+    }
+    .table-header-left { display: flex; align-items: center; gap: 12px; }
+    .table-header-left h3 { font-size: 15px; font-weight: 700; letter-spacing: -0.2px; }
+    .badge {
+      font-size: 11px; font-weight: 700;
+      background: var(--purple-bg); color: var(--purple-l);
+      border: 1px solid rgba(124,58,237,.3);
+      padding: 2px 10px; border-radius: 100px;
+    }
+    .table-actions { display: flex; align-items: center; gap: 10px; }
+    .table-search {
+      background: var(--surface2); border: 1px solid var(--border);
+      color: var(--text); border-radius: 8px; padding: 6px 12px;
+      font-size: 12px; outline: none; width: 190px;
+      transition: border .15s;
+    }
+    .table-search:focus { border-color: var(--purple); }
+
+    /* Clean unconstrained table wrapper (NO awkward 280px cutoffs) */
+    .table-responsive {
+      width: 100%;
+      overflow-x: auto;
+    }
+    table { width: 100%; border-collapse: collapse; text-align: left; }
+    thead th {
+      padding: 12px 20px;
+      font-size: 11px; font-weight: 700; color: var(--muted);
+      text-transform: uppercase; letter-spacing: 0.7px;
+      background: rgba(17,17,24,.95);
+      border-bottom: 1px solid var(--border);
+      white-space: nowrap;
+    }
+    tbody tr {
+      border-bottom: 1px solid var(--border);
+      transition: background .15s;
+    }
+    tbody tr:last-child { border-bottom: none; }
+    tbody tr:hover { background: var(--surface2); }
+    tbody tr.new-event {
+      animation: rowFlash 2.5s ease-out;
+    }
+    @keyframes rowFlash {
+      0% { background: rgba(34,197,94,.25); }
+      100% { background: transparent; }
+    }
+    tbody td {
+      padding: 14px 20px;
+      font-size: 13px;
+      vertical-align: middle;
+      white-space: nowrap;
+    }
+    .td-mono { font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--text-dim); }
+
+    .status-pill {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 3px 10px; border-radius: 100px;
+      font-size: 11px; font-weight: 600;
+    }
+    .status-pill.active { background: var(--green-bg); color: var(--green); border: 1px solid rgba(34,197,94,.3); }
+    .status-pill.error { background: rgba(239,68,68,.12); color: var(--red); border: 1px solid rgba(239,68,68,.3); }
+
+    .event-tag {
+      font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 600;
+      padding: 3px 8px; border-radius: 6px;
+      background: var(--surface2); border: 1px solid var(--border);
+      color: #e2e8f0;
+    }
+
+    /* ── Empty & Zero State ──────────────────────────────────────────── */
+    .empty-state {
+      padding: 48px 24px;
+      text-align: center;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 12px; color: var(--muted);
+    }
+    .empty-state-icon { font-size: 36px; opacity: .8; margin-bottom: 4px; }
+    .empty-state h4 { font-size: 15px; font-weight: 600; color: var(--text); }
+    .empty-state p { font-size: 13px; max-width: 480px; line-height: 1.5; color: var(--text-dim); }
+
+    /* ── Login Overlay ───────────────────────────────────────────────── */
     #login-overlay {
       position: fixed; inset: 0;
-      background: rgba(9,9,15,.95);
+      background: rgba(9,9,15,.96);
       backdrop-filter: blur(20px);
       display: flex; align-items: center; justify-content: center;
       z-index: 1000;
@@ -124,146 +296,58 @@
     .login-card {
       background: var(--surface);
       border: 1px solid var(--border);
-      border-radius: 16px;
+      border-radius: 18px;
       padding: 40px;
-      width: 380px;
+      width: 400px;
+      box-shadow: 0 10px 40px rgba(0,0,0,.6);
       text-align: center;
     }
-    .login-logo { font-size: 40px; margin-bottom: 12px; }
-    .login-card h2 { font-size: 20px; font-weight: 700; margin-bottom: 4px; }
-    .login-card p { color: var(--muted); font-size: 13px; margin-bottom: 28px; }
-    .input-group { position: relative; margin-bottom: 14px; text-align: left; }
-    .input-label { font-size: 12px; font-weight: 600; color: var(--muted); margin-bottom: 6px; display: block; text-transform: uppercase; letter-spacing: 0.5px; }
+    .login-card h2 { font-size: 22px; font-weight: 700; margin: 12px 0 4px; }
+    .login-card p { color: var(--text-dim); font-size: 13px; margin-bottom: 26px; }
+    .input-group { margin-bottom: 16px; text-align: left; }
+    .input-label { font-size: 11px; font-weight: 700; color: var(--muted); margin-bottom: 6px; display: block; text-transform: uppercase; letter-spacing: 0.6px; }
     .input-field {
       width: 100%; background: var(--surface2);
-      border: 1px solid var(--border); border-radius: 8px;
-      padding: 10px 14px; color: var(--text);
+      border: 1px solid var(--border); border-radius: 9px;
+      padding: 11px 14px; color: var(--text);
       font-size: 14px; font-family: inherit;
       outline: none; transition: border .15s;
     }
     .input-field:focus { border-color: var(--purple); }
     .btn-primary {
-      width: 100%; background: var(--purple);
-      border: none; border-radius: 8px;
-      padding: 11px; color: #fff;
-      font-size: 14px; font-weight: 600; font-family: inherit;
+      width: 100%; background: linear-gradient(135deg, var(--purple), #6d28d9);
+      border: none; border-radius: 9px;
+      padding: 12px; color: #fff;
+      font-size: 14px; font-weight: 700; font-family: inherit;
       cursor: pointer; transition: opacity .15s, transform .1s;
-      margin-top: 4px;
+      margin-top: 6px;
     }
-    .btn-primary:hover { opacity: .9; }
+    .btn-primary:hover { opacity: .92; }
     .btn-primary:active { transform: scale(.98); }
-    .login-error { color: var(--red); font-size: 12px; margin-top: 10px; display: none; }
+    .login-error { color: var(--red); font-size: 12px; margin-top: 12px; display: none; }
 
-    /* ── KPI Cards ───────────────────────────────────────────────────── */
-    .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
-    .kpi-card {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      padding: 20px;
-      position: relative;
-      overflow: hidden;
-      transition: border-color .2s;
-    }
-    .kpi-card:hover { border-color: var(--purple); }
-    .kpi-card::before {
-      content: '';
-      position: absolute; top: 0; left: 0; right: 0; height: 2px;
-      background: var(--accent, var(--purple));
-    }
-    .kpi-icon { font-size: 22px; margin-bottom: 12px; }
-    .kpi-value { font-size: 28px; font-weight: 700; letter-spacing: -1px; }
-    .kpi-label { font-size: 12px; color: var(--muted); font-weight: 500; margin-top: 4px; }
-    .kpi-trend { font-size: 11px; font-weight: 600; margin-top: 8px; }
-    .kpi-trend.up { color: var(--green); }
-    .kpi-trend.down { color: var(--red); }
-
-    /* ── Charts row ──────────────────────────────────────────────────── */
-    .charts-row { display: grid; grid-template-columns: 2fr 1fr; gap: 16px; }
-    .chart-card {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      padding: 20px;
-    }
-    .chart-card h3 { font-size: 13px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 16px; }
-    .chart-wrap { position: relative; }
-
-    /* ── Tables ──────────────────────────────────────────────────────── */
-    .table-card {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      overflow: hidden;
-    }
-    .table-header {
-      padding: 16px 20px;
-      border-bottom: 1px solid var(--border);
-      display: flex; align-items: center; justify-content: space-between;
-    }
-    .table-header h3 { font-size: 14px; font-weight: 600; }
-    .table-header .badge {
-      font-size: 11px; font-weight: 600;
-      background: rgba(124,58,237,.2); color: var(--purple-l);
-      padding: 2px 8px; border-radius: 100px;
-    }
-    table { width: 100%; border-collapse: collapse; }
-    thead th {
-      padding: 10px 20px; text-align: left;
-      font-size: 11px; font-weight: 600; color: var(--muted);
-      text-transform: uppercase; letter-spacing: 0.6px;
-      border-bottom: 1px solid var(--border);
-    }
-    tbody tr { border-bottom: 1px solid var(--border); transition: background .1s; }
-    tbody tr:last-child { border: none; }
-    tbody tr:hover { background: var(--surface2); }
-    tbody td { padding: 12px 20px; font-size: 13px; }
-    .td-mono { font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--muted); }
-    .status-pill {
-      display: inline-flex; align-items: center; gap: 5px;
-      padding: 2px 8px; border-radius: 100px;
-      font-size: 11px; font-weight: 600;
-    }
-    .status-pill.active { background: rgba(34,197,94,.15); color: var(--green); }
-    .status-pill.idle { background: rgba(100,116,139,.15); color: var(--muted); }
-    .status-pill.error { background: rgba(239,68,68,.15); color: var(--red); }
-    .status-pill::before { content: '●'; font-size: 8px; }
-
-    /* ── Geo map placeholder ─────────────────────────────────────────── */
-    .geo-card {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      padding: 20px;
-      height: 280px;
-      display: flex; flex-direction: column;
-    }
-    .geo-list { flex: 1; overflow-y: auto; margin-top: 12px; display: flex; flex-direction: column; gap: 8px; }
-    .geo-row { display: flex; align-items: center; gap: 10px; }
-    .geo-flag { font-size: 18px; }
-    .geo-bar-wrap { flex: 1; background: var(--surface2); border-radius: 4px; height: 6px; }
-    .geo-bar { height: 6px; border-radius: 4px; background: linear-gradient(90deg, var(--purple), var(--blue)); }
-    .geo-count { font-size: 12px; font-weight: 600; min-width: 40px; text-align: right; }
-
-    /* ── Scrollbar ───────────────────────────────────────────────────── */
-    ::-webkit-scrollbar { width: 4px; }
-    ::-webkit-scrollbar-track { background: transparent; }
-    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
-
-    /* ── Page sections ───────────────────────────────────────────────── */
-    .page { display: none; }
-    .page.active { display: contents; }
+    /* ── Pages ───────────────────────────────────────────────────────── */
+    .page { display: none; flex-direction: column; gap: 24px; }
+    .page.active { display: flex; }
 
     /* ── Toast ───────────────────────────────────────────────────────── */
     #toast {
       position: fixed; bottom: 24px; right: 24px;
-      background: var(--surface2); border: 1px solid var(--border);
+      background: var(--surface2); border: 1px solid var(--border-l);
       border-radius: 10px; padding: 12px 18px;
-      font-size: 13px; font-weight: 500;
-      transform: translateY(80px); opacity: 0;
-      transition: all .3s; z-index: 999;
+      font-size: 13px; font-weight: 600; color: var(--text);
+      transform: translateY(100px); opacity: 0;
+      transition: all .3s cubic-bezier(0.16, 1, 0.3, 1);
+      z-index: 999; box-shadow: 0 10px 30px rgba(0,0,0,.5);
+      display: flex; align-items: center; gap: 8px;
     }
     #toast.show { transform: translateY(0); opacity: 1; }
+
+    /* ── Scrollbars ──────────────────────────────────────────────────── */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: var(--muted); }
   </style>
 </head>
 <body>
@@ -271,19 +355,19 @@
 <!-- Login Overlay -->
 <div id="login-overlay">
   <div class="login-card">
-    <div class="login-logo">🔐</div>
-    <h2>Admin Portal</h2>
-    <p>Genux AI Studio — Telemetry & Analytics</p>
+    <div class="logo-icon" style="margin: 0 auto; width: 48px; height: 48px; font-size: 24px;">🎬</div>
+    <h2>Genux AI Admin</h2>
+    <p>Sign in to access real-time telemetry & controls</p>
     <div class="input-group">
-      <label class="input-label">Email</label>
-      <input id="login-email" class="input-field" type="email" placeholder="admin@genuxai.io" value="admin@genuxai.io">
+      <label class="input-label">Email or Username</label>
+      <input id="login-email" class="input-field" type="text" placeholder="admin@genuxai.io" value="admin@genuxai.io">
     </div>
     <div class="input-group">
       <label class="input-label">Password</label>
-      <input id="login-pass" class="input-field" type="password" placeholder="••••••••" value="">
+      <input id="login-pass" class="input-field" type="password" placeholder="••••••••" value="genux2026!">
     </div>
-    <button class="btn-primary" onclick="doLogin()">Sign in →</button>
-    <div class="login-error" id="login-error">Invalid credentials. Try again.</div>
+    <button class="btn-primary" onclick="doLogin()">Access Dashboard →</button>
+    <div class="login-error" id="login-error"></div>
   </div>
 </div>
 
@@ -295,54 +379,65 @@
         <div class="logo-icon">🎬</div>
         <div>
           <div class="logo-text">Genux AI</div>
-          <div class="logo-sub">Admin Portal</div>
+          <div class="logo-sub">Master Admin</div>
         </div>
       </div>
     </div>
 
     <div class="sidebar-nav">
-      <div class="nav-section-label">Overview</div>
+      <div class="nav-section-label">Monitoring</div>
       <div class="nav-item active" onclick="navigate('dashboard', this)">
         <span class="nav-icon">📊</span> Dashboard
       </div>
       <div class="nav-item" onclick="navigate('telemetry', this)">
-        <span class="nav-icon">📡</span> Telemetry
+        <span class="nav-icon">📡</span> Live Telemetry
         <span class="nav-badge" id="telem-badge">0</span>
       </div>
 
-      <div class="nav-section-label" style="margin-top:8px">Users & Installs</div>
+      <div class="nav-section-label" style="margin-top:10px">Fleet & Users</div>
       <div class="nav-item" onclick="navigate('users', this)">
-        <span class="nav-icon">👥</span> Installs
+        <span class="nav-icon">👥</span> Installs & Clients
       </div>
       <div class="nav-item" onclick="navigate('geo', this)">
         <span class="nav-icon">🌍</span> Geography
       </div>
 
-      <div class="nav-section-label" style="margin-top:8px">System</div>
+      <div class="nav-section-label" style="margin-top:10px">System</div>
       <div class="nav-item" onclick="navigate('errors', this)">
         <span class="nav-icon">⚠️</span> Error Logs
+        <span class="nav-badge" id="err-nav-badge" style="background:var(--red);display:none">0</span>
       </div>
       <div class="nav-item" onclick="navigate('releases', this)">
-        <span class="nav-icon">🚀</span> Releases
+        <span class="nav-icon">🚀</span> GitHub Releases
       </div>
     </div>
 
     <div class="sidebar-footer">
-      <div style="display:flex;align-items:center;font-size:12px;color:var(--muted)">
-        <span class="status-dot"></span> Backend live · v1.0.0
+      <div style="display:flex;align-items:center;font-size:12px;color:var(--text-dim);font-weight:500">
+        <span class="status-dot"></span> Real-Time Engine Active
       </div>
-      <div style="margin-top:8px;font-size:11px;color:var(--muted)">admin.genuxai.io</div>
+      <div style="margin-top:6px;font-size:11px;color:var(--muted);font-family:'JetBrains Mono',monospace">v1.0.0 · admin.genuxai.io</div>
     </div>
   </nav>
 
-  <!-- Main -->
+  <!-- Main Area -->
   <div id="main">
     <div id="topbar">
-      <div class="topbar-title" id="page-title">Dashboard</div>
+      <div class="topbar-left">
+        <div class="topbar-title" id="page-title">Dashboard</div>
+        <div class="live-indicator">
+          <span class="live-dot"></span>
+          <span id="live-status-text">Live SSE Connected</span>
+        </div>
+      </div>
       <div class="topbar-right">
         <div class="topbar-pill">🕐 <span id="clock">--:--</span></div>
-        <div class="topbar-pill">Installs <span id="kpi-installs-sm">0</span></div>
-        <div class="topbar-pill">Active <span id="kpi-active-sm">0</span></div>
+        <button class="btn-action" onclick="triggerTestPing()" title="Trigger a real test telemetry event to test live stream">
+          ⚡ Send Test Ping
+        </button>
+        <button class="btn-action" onclick="refreshData()" title="Reload data immediately">
+          🔄 Refresh
+        </button>
       </div>
     </div>
 
@@ -351,143 +446,174 @@
       <!-- DASHBOARD PAGE -->
       <div class="page active" id="page-dashboard">
 
-        <!-- KPI row -->
+        <!-- Real KPI Cards -->
         <div class="kpi-grid">
           <div class="kpi-card" style="--accent:var(--purple)">
-            <div class="kpi-icon">📥</div>
+            <div class="kpi-top">
+              <div class="kpi-icon">📥</div>
+              <span class="kpi-badge" style="background:var(--purple-bg);color:var(--purple-l)">Fleet</span>
+            </div>
             <div class="kpi-value" id="kpi-total">0</div>
-            <div class="kpi-label">Total Installs</div>
-            <div class="kpi-trend up" id="kpi-total-trend">↑ loading...</div>
+            <div class="kpi-label">Total Unique Installs</div>
           </div>
+
           <div class="kpi-card" style="--accent:var(--green)">
-            <div class="kpi-icon">🟢</div>
+            <div class="kpi-top">
+              <div class="kpi-icon">🟢</div>
+              <span class="kpi-badge" style="background:var(--green-bg);color:var(--green)">24h Active</span>
+            </div>
             <div class="kpi-value" id="kpi-active">0</div>
-            <div class="kpi-label">Active Instances (24h)</div>
-            <div class="kpi-trend up" id="kpi-active-trend">↑ —</div>
+            <div class="kpi-label">Active Instances</div>
           </div>
+
           <div class="kpi-card" style="--accent:var(--blue)">
-            <div class="kpi-icon">🎬</div>
+            <div class="kpi-top">
+              <div class="kpi-icon">🎬</div>
+              <span class="kpi-badge" style="background:var(--blue-bg);color:var(--blue)">Local AI</span>
+            </div>
             <div class="kpi-value" id="kpi-jobs">0</div>
             <div class="kpi-label">Recast Jobs Run</div>
-            <div class="kpi-trend up" id="kpi-jobs-trend">↑ —</div>
           </div>
-          <div class="kpi-card" style="--accent:var(--amber)">
-            <div class="kpi-icon">⚠️</div>
+
+          <div class="kpi-card" style="--accent:var(--red)">
+            <div class="kpi-top">
+              <div class="kpi-icon">⚠️</div>
+              <span class="kpi-badge" style="background:rgba(239,68,68,.15);color:var(--red)" id="kpi-err-badge">Clean</span>
+            </div>
             <div class="kpi-value" id="kpi-errors">0</div>
-            <div class="kpi-label">Error Events (24h)</div>
-            <div class="kpi-trend" id="kpi-errors-trend">—</div>
+            <div class="kpi-label">Reported Errors</div>
           </div>
         </div>
 
-        <!-- Charts row -->
+        <!-- Real Charts Row (Installs/Activity Timeline & GPU Breakdown) -->
         <div class="charts-row">
           <div class="chart-card">
-            <h3>Installs over time</h3>
-            <div class="chart-wrap" style="height:200px">
-              <canvas id="chart-installs"></canvas>
+            <div class="chart-header">
+              <span class="chart-title">Real-Time Activity Timeline (Last 14 Days)</span>
+              <span style="font-size:11px;color:var(--muted)">Verified Telemetry Pings</span>
+            </div>
+            <div class="chart-wrap" style="height:210px">
+              <canvas id="chart-timeline"></canvas>
             </div>
           </div>
+
           <div class="chart-card">
-            <h3>Pipeline usage</h3>
-            <div class="chart-wrap" style="height:200px">
-              <canvas id="chart-pipeline"></canvas>
+            <div class="chart-header">
+              <span class="chart-title">Hardware GPUs Reported</span>
+              <span style="font-size:11px;color:var(--muted)">Active Hardware</span>
+            </div>
+            <div class="chart-wrap" style="height:210px">
+              <canvas id="chart-gpus"></canvas>
             </div>
           </div>
         </div>
 
-        <!-- Second charts row -->
-        <div class="charts-row">
-          <div class="chart-card">
-            <h3>Active instances (last 7 days)</h3>
-            <div class="chart-wrap" style="height:180px">
-              <canvas id="chart-active"></canvas>
-            </div>
-          </div>
-          <div class="geo-card">
-            <h3 style="font-size:13px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.6px">Top Countries</h3>
-            <div class="geo-list" id="geo-list">
-              <div style="color:var(--muted);font-size:12px">Loading...</div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Recent telemetry table -->
+        <!-- RECENT TELEMETRY EVENTS TABLE (Placement Fixed - Unconstrained Height) -->
         <div class="table-card">
           <div class="table-header">
-            <h3>Recent Telemetry Events</h3>
-            <span class="badge" id="telem-count-badge">0 events</span>
+            <div class="table-header-left">
+              <h3>Recent Real-Time Telemetry Events</h3>
+              <span class="badge" id="telem-count-badge">0 events</span>
+            </div>
+            <div class="table-actions">
+              <input type="text" class="table-search" id="telem-search" placeholder="Filter by event, OS, GPU..." oninput="filterEventsTable()">
+              <button class="btn-action" onclick="navigate('telemetry', document.querySelectorAll('.nav-item')[1])">
+                View All Events →
+              </button>
+            </div>
           </div>
-          <div style="overflow-x:auto;max-height:280px;overflow-y:auto">
+
+          <div class="table-responsive">
             <table>
-              <thead><tr>
-                <th>Time</th><th>App Version</th><th>Event</th><th>OS</th><th>GPU</th><th>Status</th>
-              </tr></thead>
+              <thead>
+                <tr>
+                  <th>Timestamp</th>
+                  <th>App Version</th>
+                  <th>Event</th>
+                  <th>OS Platform</th>
+                  <th>GPU Hardware</th>
+                  <th>Location</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
               <tbody id="telem-tbody">
-                <tr><td colspan="6" style="text-align:center;color:var(--muted);padding:32px">Loading telemetry...</td></tr>
+                <!-- Dynamically populated or zero-state -->
               </tbody>
             </table>
           </div>
         </div>
-      </div>
 
-      <!-- TELEMETRY PAGE -->
+      </div><!-- /page-dashboard -->
+
+      <!-- TELEMETRY FULL PAGE -->
       <div class="page" id="page-telemetry">
         <div class="table-card">
           <div class="table-header">
-            <h3>All Telemetry Events</h3>
-            <span class="badge" id="telem-all-badge">0</span>
+            <div class="table-header-left">
+              <h3>Live Telemetry Stream</h3>
+              <span class="badge" id="telem-full-badge">0 events</span>
+            </div>
+            <div class="table-actions">
+              <button class="btn-action" onclick="triggerTestPing()">⚡ Trigger Test Ping</button>
+            </div>
           </div>
-          <div style="overflow-x:auto;max-height:calc(100vh - 200px);overflow-y:auto">
+          <div class="table-responsive">
             <table>
-              <thead><tr>
-                <th>Timestamp</th><th>Version</th><th>Event</th><th>OS</th><th>GPU</th><th>VRAM</th><th>Uptime</th><th>Jobs</th>
-              </tr></thead>
-              <tbody id="telem-all-tbody">
-                <tr><td colspan="8" style="text-align:center;color:var(--muted);padding:32px">Loading...</td></tr>
-              </tbody>
+              <thead>
+                <tr>
+                  <th>Timestamp</th>
+                  <th>Client UUID</th>
+                  <th>Version</th>
+                  <th>Event</th>
+                  <th>OS</th>
+                  <th>GPU</th>
+                  <th>VRAM</th>
+                  <th>Uptime</th>
+                  <th>Jobs</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody id="telem-full-tbody"></tbody>
             </table>
           </div>
         </div>
       </div>
 
-      <!-- USERS PAGE -->
+      <!-- USERS & INSTALLS PAGE -->
       <div class="page" id="page-users">
-        <div class="kpi-grid">
-          <div class="kpi-card" style="--accent:var(--purple)">
-            <div class="kpi-icon">📥</div>
-            <div class="kpi-value" id="u-total">0</div>
-            <div class="kpi-label">Total Installs</div>
+        <div class="table-card">
+          <div class="table-header">
+            <h3>Registered Client Instances</h3>
+            <span class="badge" id="users-badge">0 clients</span>
           </div>
-          <div class="kpi-card" style="--accent:var(--green)">
-            <div class="kpi-icon">🔄</div>
-            <div class="kpi-value" id="u-today">0</div>
-            <div class="kpi-label">New Today</div>
-          </div>
-          <div class="kpi-card" style="--accent:var(--blue)">
-            <div class="kpi-icon">📅</div>
-            <div class="kpi-value" id="u-week">0</div>
-            <div class="kpi-label">New This Week</div>
-          </div>
-          <div class="kpi-card" style="--accent:var(--amber)">
-            <div class="kpi-icon">💾</div>
-            <div class="kpi-value" id="u-versions">—</div>
-            <div class="kpi-label">Latest Version</div>
-          </div>
-        </div>
-        <div class="chart-card" style="margin-top:0">
-          <h3>Install growth</h3>
-          <div class="chart-wrap" style="height:240px">
-            <canvas id="chart-growth"></canvas>
+          <div class="table-responsive">
+            <table>
+              <thead>
+                <tr>
+                  <th>Client ID</th>
+                  <th>First Seen</th>
+                  <th>Last Seen</th>
+                  <th>App Version</th>
+                  <th>OS</th>
+                  <th>GPU</th>
+                  <th>Location</th>
+                  <th>Pings</th>
+                </tr>
+              </thead>
+              <tbody id="users-tbody"></tbody>
+            </table>
           </div>
         </div>
       </div>
 
-      <!-- GEO PAGE -->
+      <!-- GEOGRAPHY PAGE -->
       <div class="page" id="page-geo">
         <div class="chart-card">
-          <h3>Installs by country</h3>
+          <div class="chart-header">
+            <span class="chart-title">Installs & Activity by Country</span>
+          </div>
           <div class="chart-wrap" style="height:320px">
-            <canvas id="chart-geo"></canvas>
+            <canvas id="chart-geo-full"></canvas>
           </div>
         </div>
       </div>
@@ -495,11 +621,22 @@
       <!-- ERRORS PAGE -->
       <div class="page" id="page-errors">
         <div class="table-card">
-          <div class="table-header"><h3>Error Events</h3><span class="badge" id="err-badge">0</span></div>
-          <div style="overflow-x:auto;max-height:calc(100vh-200px);overflow-y:auto">
+          <div class="table-header">
+            <h3>Reported Client Error Logs</h3>
+            <button class="btn-action" onclick="clearErrorLogs()">Clear Error Logs</button>
+          </div>
+          <div class="table-responsive">
             <table>
-              <thead><tr><th>Time</th><th>Version</th><th>Error</th><th>GPU</th></tr></thead>
-              <tbody id="err-tbody"><tr><td colspan="4" style="text-align:center;color:var(--muted);padding:32px">No error events</td></tr></tbody>
+              <thead>
+                <tr>
+                  <th>Timestamp</th>
+                  <th>Version</th>
+                  <th>Error Message</th>
+                  <th>GPU</th>
+                  <th>Location</th>
+                </tr>
+              </thead>
+              <tbody id="errors-tbody"></tbody>
             </table>
           </div>
         </div>
@@ -508,11 +645,22 @@
       <!-- RELEASES PAGE -->
       <div class="page" id="page-releases">
         <div class="table-card">
-          <div class="table-header"><h3>GitHub Releases</h3><span class="badge">genuxaistudio</span></div>
-          <div style="overflow-x:auto;overflow-y:auto;max-height:calc(100vh - 180px)">
+          <div class="table-header">
+            <h3>GitHub Official Releases</h3>
+            <span class="badge">github.com/Xonarouss/genuxaistudio</span>
+          </div>
+          <div class="table-responsive">
             <table>
-              <thead><tr><th>Tag</th><th>Name</th><th>Published</th><th>Downloads</th><th>Assets</th></tr></thead>
-              <tbody id="releases-tbody"><tr><td colspan="5" style="text-align:center;color:var(--muted);padding:32px">Loading...</td></tr></tbody>
+              <thead>
+                <tr>
+                  <th>Release Tag</th>
+                  <th>Name</th>
+                  <th>Published Date</th>
+                  <th>Total Downloads</th>
+                  <th>Assets</th>
+                </tr>
+              </thead>
+              <tbody id="releases-tbody"></tbody>
             </table>
           </div>
         </div>
@@ -525,11 +673,13 @@
 <div id="toast"></div>
 
 <script>
-// ── Config ───────────────────────────────────────────────────────────────────
+// ── State & Config ────────────────────────────────────────────────────────────
 const API = window.location.origin;
 let JWT = localStorage.getItem('genux_admin_jwt') || '';
-let telemData = [];
+let realEvents = [];
+let allClients = [];
 let charts = {};
+let sseSource = null;
 
 // ── Auth ─────────────────────────────────────────────────────────────────────
 async function doLogin() {
@@ -537,9 +687,11 @@ async function doLogin() {
   const pass  = document.getElementById('login-pass').value;
   const err   = document.getElementById('login-error');
   err.style.display = 'none';
+
   try {
     const r = await fetch(`${API}/api/admin/login`, {
-      method: 'POST', headers: {'Content-Type':'application/json'},
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, password: pass })
     });
     const d = await r.json();
@@ -547,302 +699,448 @@ async function doLogin() {
       JWT = d.token;
       localStorage.setItem('genux_admin_jwt', JWT);
       document.getElementById('login-overlay').style.display = 'none';
-      initDashboard();
+      startRealtime();
     } else {
       err.style.display = 'block';
       err.textContent = d.error || 'Invalid credentials';
     }
-  } catch {
-    // Demo mode — no real server required
-    JWT = 'demo';
-    localStorage.setItem('genux_admin_jwt', 'demo');
-    document.getElementById('login-overlay').style.display = 'none';
-    initDashboard();
+  } catch (e) {
+    err.style.display = 'block';
+    err.textContent = 'Connection error: ' + e.message;
   }
 }
 
-// Auto-login if token exists
+// Check existing login
 if (JWT) {
   document.getElementById('login-overlay').style.display = 'none';
-  initDashboard();
+  startRealtime();
 }
 
 // ── Navigation ────────────────────────────────────────────────────────────────
-let currentPage = 'dashboard';
 function navigate(page, el) {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   document.getElementById(`page-${page}`).classList.add('active');
-  el.classList.add('active');
-  currentPage = page;
-  const titles = { dashboard:'Dashboard', telemetry:'Telemetry Events', users:'Installs & Users', geo:'Geography', errors:'Error Logs', releases:'Releases' };
+  if (el) el.classList.add('active');
+
+  const titles = {
+    dashboard: 'Dashboard',
+    telemetry: 'Real-Time Telemetry Stream',
+    users: 'Fleet & Client Instances',
+    geo: 'Global Geography Breakdown',
+    errors: 'Error Logs',
+    releases: 'GitHub Releases'
+  };
   document.getElementById('page-title').textContent = titles[page] || page;
   if (page === 'releases') loadReleases();
 }
 
-// ── Clock ─────────────────────────────────────────────────────────────────────
-setInterval(() => {
-  document.getElementById('clock').textContent = new Date().toLocaleTimeString('en', {hour:'2-digit',minute:'2-digit'});
-}, 1000);
-
-// ── Toast ─────────────────────────────────────────────────────────────────────
-function toast(msg) {
-  const t = document.getElementById('toast');
-  t.textContent = msg;
-  t.classList.add('show');
-  setTimeout(() => t.classList.remove('show'), 3000);
+// ── Real-Time Streaming & Metrics ─────────────────────────────────────────────
+async function startRealtime() {
+  await refreshData();
+  setupSSE();
+  // Fallback periodic sync every 15s
+  setInterval(refreshData, 15000);
 }
 
-// ── Chart helpers ─────────────────────────────────────────────────────────────
-const chartDefaults = {
-  responsive: true, maintainAspectRatio: false,
+function setupSSE() {
+  if (sseSource) sseSource.close();
+  try {
+    sseSource = new EventSource(`${API}/api/admin/events-stream?token=${encodeURIComponent(JWT)}`);
+    sseSource.onmessage = (e) => {
+      try {
+        const msg = JSON.parse(e.data);
+        if (msg.type === 'telemetry_event' && msg.event) {
+          onNewTelemetryEvent(msg.event, msg.totalClients);
+        }
+      } catch (err) {
+        console.error('SSE parse error:', err);
+      }
+    };
+    sseSource.onopen = () => {
+      document.getElementById('live-status-text').textContent = 'Live SSE Connected';
+    };
+    sseSource.onerror = () => {
+      document.getElementById('live-status-text').textContent = 'Auto-Polling Active';
+    };
+  } catch {
+    document.getElementById('live-status-text').textContent = 'Auto-Polling Active';
+  }
+}
+
+function onNewTelemetryEvent(newEvent, totalClients) {
+  // Prepend event
+  realEvents.unshift(newEvent);
+  if (realEvents.length > 500) realEvents.pop();
+
+  // Highlight toast
+  toast(`⚡ New event: ${newEvent.event} from ${newEvent.gpu || 'Client'}`);
+
+  // Update counters
+  if (totalClients) document.getElementById('kpi-total').textContent = totalClients;
+  renderEventsTable(true);
+  renderFullEventsTable();
+}
+
+// ── Fetch Real Metrics from Server ────────────────────────────────────────────
+async function refreshData() {
+  try {
+    const r = await fetch(`${API}/api/admin/metrics`, {
+      headers: { Authorization: `Bearer ${JWT}` }
+    });
+
+    if (r.status === 401) {
+      localStorage.removeItem('genux_admin_jwt');
+      document.getElementById('login-overlay').style.display = 'flex';
+      return;
+    }
+
+    if (!r.ok) return;
+
+    const data = await r.json();
+    realEvents = data.events || [];
+    allClients = data.recentClients || [];
+
+    // Real KPIs
+    const ov = data.overview || {};
+    document.getElementById('kpi-total').textContent = ov.totalClients ?? 0;
+    document.getElementById('kpi-active').textContent = ov.activeInstances24h ?? 0;
+    document.getElementById('kpi-jobs').textContent = ov.totalJobs ?? 0;
+    document.getElementById('kpi-errors').textContent = ov.totalErrors ?? 0;
+
+    const errBadge = document.getElementById('kpi-err-badge');
+    if ((ov.totalErrors ?? 0) > 0) {
+      errBadge.textContent = `${ov.totalErrors} alerts`;
+      errBadge.style.color = 'var(--red)';
+    } else {
+      errBadge.textContent = 'Clean';
+      errBadge.style.color = 'var(--green)';
+    }
+
+    // Badge counts
+    document.getElementById('telem-badge').textContent = realEvents.length;
+    document.getElementById('telem-count-badge').textContent = `${realEvents.length} events`;
+    document.getElementById('telem-full-badge').textContent = `${realEvents.length} events`;
+    document.getElementById('users-badge').textContent = `${allClients.length} clients`;
+
+    // Render Real Tables
+    renderEventsTable(false);
+    renderFullEventsTable();
+    renderClientsTable();
+    renderErrorsTable(data.errors || []);
+
+    // Render Real Charts
+    renderTimelineChart(data.timeline || []);
+    renderGpuChart(data.gpuBreakdown || []);
+    renderGeoChart(data.locationsBreakdown || []);
+
+  } catch (err) {
+    console.error('Error refreshing metrics:', err);
+  }
+}
+
+// ── Trigger Real Test Ping ────────────────────────────────────────────────────
+async function triggerTestPing() {
+  try {
+    const r = await fetch(`${API}/api/admin/test-ping`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${JWT}` }
+    });
+    const d = await r.json();
+    if (d.success) {
+      toast('✓ Test telemetry event sent and recorded in real time!');
+    }
+  } catch (err) {
+    toast('Error sending test ping: ' + err.message);
+  }
+}
+
+// ── Render Recent Events Table (Fixed Placement, No Cutoffs) ──────────────────
+function renderEventsTable(flashFirst = false) {
+  const tbody = document.getElementById('telem-tbody');
+  const search = (document.getElementById('telem-search').value || '').toLowerCase();
+
+  const filtered = realEvents.filter(e => {
+    if (!search) return true;
+    return (
+      (e.event || '').toLowerCase().includes(search) ||
+      (e.gpu || '').toLowerCase().includes(search) ||
+      (e.os || '').toLowerCase().includes(search) ||
+      (e.country || '').toLowerCase().includes(search)
+    );
+  }).slice(0, 15);
+
+  if (!filtered.length) {
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="7">
+          <div class="empty-state">
+            <div class="empty-state-icon">📡</div>
+            <h4>Waiting for Client Telemetry</h4>
+            <p>No telemetry events received yet. When clients launch Genux AI Studio with telemetry opted in, live hardware and lifecycle events stream directly into this table.</p>
+            <button class="btn-action" style="margin-top:6px" onclick="triggerTestPing()">⚡ Trigger Test Telemetry Event</button>
+          </div>
+        </td>
+      </tr>
+    `;
+    return;
+  }
+
+  tbody.innerHTML = filtered.map((e, idx) => {
+    const isNew = flashFirst && idx === 0;
+    const timeFormatted = new Date(e.timestamp).toLocaleString('en', {
+      month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit'
+    });
+
+    return `
+      <tr class="${isNew ? 'new-event' : ''}">
+        <td class="td-mono">${timeFormatted}</td>
+        <td><span style="font-size:11px;background:var(--purple-bg);color:var(--purple-l);padding:2px 7px;border-radius:5px;font-weight:600">${e.appVersion || '1.0.0'}</span></td>
+        <td><span class="event-tag">${e.event || 'ping'}</span></td>
+        <td style="color:var(--text-dim)">${e.os || 'Windows'}</td>
+        <td style="font-weight:500;color:#e2e8f0">${e.gpu || 'Unknown GPU'}</td>
+        <td style="color:var(--text-dim)">${e.city ? `${e.city}, ` : ''}${e.country || 'Local'}</td>
+        <td>
+          <span class="status-pill ${e.error ? 'error' : 'active'}">
+            ${e.error ? '● error' : '● ok'}
+          </span>
+        </td>
+      </tr>
+    `;
+  }).join('');
+}
+
+function filterEventsTable() {
+  renderEventsTable(false);
+}
+
+// ── Render Full Telemetry Table ───────────────────────────────────────────────
+function renderFullEventsTable() {
+  const tbody = document.getElementById('telem-full-tbody');
+  if (!tbody) return;
+
+  if (!realEvents.length) {
+    tbody.innerHTML = `<tr><td colspan="10" style="text-align:center;padding:32px;color:var(--muted)">No events streamed yet</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = realEvents.map(e => `
+    <tr>
+      <td class="td-mono">${new Date(e.timestamp).toLocaleString()}</td>
+      <td class="td-mono" style="font-size:11px">${(e.clientUuid || '').slice(0, 14)}</td>
+      <td>${e.appVersion || '1.0.0'}</td>
+      <td><span class="event-tag">${e.event}</span></td>
+      <td>${e.os || '—'}</td>
+      <td style="font-size:12px">${e.gpu || '—'}</td>
+      <td style="color:var(--muted)">${e.vram || '—'}</td>
+      <td style="color:var(--muted)">${e.uptime || '—'}</td>
+      <td>${e.jobs || 0}</td>
+      <td><span class="status-pill ${e.error ? 'error' : 'active'}">${e.error ? 'error' : 'ok'}</span></td>
+    </tr>
+  `).join('');
+}
+
+// ── Render Clients Table ──────────────────────────────────────────────────────
+function renderClientsTable() {
+  const tbody = document.getElementById('users-tbody');
+  if (!tbody) return;
+
+  if (!allClients.length) {
+    tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:32px;color:var(--muted)">No client instances registered yet</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = allClients.map(c => `
+    <tr>
+      <td class="td-mono" style="font-weight:600;color:var(--purple-l)">${c.clientId}</td>
+      <td class="td-mono">${new Date(c.firstSeen).toLocaleDateString()}</td>
+      <td class="td-mono">${new Date(c.lastSeen).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}</td>
+      <td>${c.appVersion || '1.0.0'}</td>
+      <td>${c.os || '—'}</td>
+      <td>${c.gpu || '—'}</td>
+      <td>${c.country || 'Local'}</td>
+      <td style="font-weight:700">${c.downloadsCount || 1}</td>
+    </tr>
+  `).join('');
+}
+
+// ── Render Error Logs Table ───────────────────────────────────────────────────
+function renderErrorsTable(errors) {
+  const tbody = document.getElementById('errors-tbody');
+  const badge = document.getElementById('err-nav-badge');
+  if (!tbody) return;
+
+  if (!errors || !errors.length) {
+    if (badge) badge.style.display = 'none';
+    tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;padding:32px;color:var(--green)">✓ No errors reported — system operating smoothly</td></tr>`;
+    return;
+  }
+
+  if (badge) {
+    badge.textContent = errors.length;
+    badge.style.display = 'inline-block';
+  }
+
+  tbody.innerHTML = errors.map(err => `
+    <tr>
+      <td class="td-mono">${new Date(err.timestamp).toLocaleString()}</td>
+      <td>${err.appVersion || '1.0.0'}</td>
+      <td style="color:var(--red);font-weight:500">${err.message}</td>
+      <td>${err.gpu || '—'}</td>
+      <td style="color:var(--muted)">${err.country || '—'}</td>
+    </tr>
+  `).join('');
+}
+
+async function clearErrorLogs() {
+  if (!confirm('Clear all error logs?')) return;
+  await fetch(`${API}/api/admin/clear-errors`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${JWT}` }
+  });
+  refreshData();
+  toast('Error logs cleared.');
+}
+
+// ── Chart Renderers ───────────────────────────────────────────────────────────
+const chartBaseOptions = {
+  responsive: true,
+  maintainAspectRatio: false,
   plugins: { legend: { display: false } },
   scales: {
-    x: { grid: { color: '#252530' }, ticks: { color: '#64748b', font: { size: 11 } } },
-    y: { grid: { color: '#252530' }, ticks: { color: '#64748b', font: { size: 11 } } }
+    x: { grid: { color: '#252535' }, ticks: { color: '#64748b', font: { size: 11 } } },
+    y: { grid: { color: '#252535' }, ticks: { color: '#64748b', font: { size: 11 }, precision: 0 } }
   }
 };
 
-function makeLineChart(id, labels, data, color = '#7c3aed') {
-  const ctx = document.getElementById(id);
+function renderTimelineChart(timeline) {
+  const ctx = document.getElementById('chart-timeline');
   if (!ctx) return;
-  if (charts[id]) charts[id].destroy();
-  charts[id] = new Chart(ctx, {
+  if (charts['timeline']) charts['timeline'].destroy();
+
+  const labels = timeline.map(t => t.label);
+  const data = timeline.map(t => t.events);
+
+  charts['timeline'] = new Chart(ctx, {
     type: 'line',
     data: {
       labels,
-      datasets: [{ data, borderColor: color, backgroundColor: color + '18',
-        fill: true, tension: 0.4, pointRadius: 3, pointBackgroundColor: color, borderWidth: 2 }]
+      datasets: [{
+        label: 'Real Events',
+        data,
+        borderColor: '#7c3aed',
+        backgroundColor: 'rgba(124,58,237,0.12)',
+        fill: true,
+        tension: 0.35,
+        borderWidth: 2,
+        pointRadius: 3,
+        pointBackgroundColor: '#a855f7'
+      }]
     },
-    options: { ...chartDefaults }
+    options: chartBaseOptions
   });
 }
 
-function makeDoughnut(id, labels, data) {
-  const ctx = document.getElementById(id);
+function renderGpuChart(gpus) {
+  const ctx = document.getElementById('chart-gpus');
   if (!ctx) return;
-  if (charts[id]) charts[id].destroy();
-  const colors = ['#7c3aed','#3b82f6','#22c55e','#f59e0b','#ef4444','#06b6d4','#ec4899'];
-  charts[id] = new Chart(ctx, {
+  if (charts['gpus']) charts['gpus'].destroy();
+
+  const labels = gpus.length ? gpus.map(g => g.model) : ['No GPU data yet'];
+  const data = gpus.length ? gpus.map(g => g.count) : [0];
+  const colors = ['#7c3aed', '#3b82f6', '#22c55e', '#f59e0b', '#ec4899', '#06b6d4'];
+
+  charts['gpus'] = new Chart(ctx, {
     type: 'doughnut',
-    data: { labels, datasets: [{ data, backgroundColor: colors, borderWidth: 0, hoverOffset: 4 }] },
+    data: {
+      labels,
+      datasets: [{
+        data,
+        backgroundColor: gpus.length ? colors : ['#252535'],
+        borderWidth: 0,
+        hoverOffset: 4
+      }]
+    },
     options: {
-      responsive: true, maintainAspectRatio: false, cutout: '70%',
+      responsive: true,
+      maintainAspectRatio: false,
+      cutout: '72%',
       plugins: {
-        legend: { position: 'right', labels: { color: '#94a3b8', font: { size: 12 }, padding: 12 } }
+        legend: {
+          position: 'right',
+          labels: { color: '#94a3b8', font: { size: 11 }, padding: 10 }
+        }
       }
     }
   });
 }
 
-function makeBarChart(id, labels, data, color = '#3b82f6') {
-  const ctx = document.getElementById(id);
+function renderGeoChart(countries) {
+  const ctx = document.getElementById('chart-geo-full');
   if (!ctx) return;
-  if (charts[id]) charts[id].destroy();
-  charts[id] = new Chart(ctx, {
+  if (charts['geo']) charts['geo'].destroy();
+
+  const labels = countries.length ? countries.map(c => c.country) : ['No Geo data'];
+  const data = countries.length ? countries.map(c => c.count) : [0];
+
+  charts['geo'] = new Chart(ctx, {
     type: 'bar',
     data: {
       labels,
-      datasets: [{ data, backgroundColor: color + '80', borderColor: color, borderWidth: 1, borderRadius: 6 }]
+      datasets: [{
+        data,
+        backgroundColor: 'rgba(124,58,237,0.7)',
+        borderColor: '#7c3aed',
+        borderWidth: 1,
+        borderRadius: 6
+      }]
     },
-    options: { ...chartDefaults }
+    options: chartBaseOptions
   });
 }
 
-// ── Generate demo data ────────────────────────────────────────────────────────
-function generateDemoData() {
-  const gpus = ['NVIDIA RTX 4090','NVIDIA RTX 4080','NVIDIA RTX 5080','NVIDIA RTX 3090','NVIDIA RTX 4070 Ti'];
-  const events = ['app_launch','recast_complete','recast_start','model_download','settings_open','app_close'];
-  const oses = ['Windows 11','Windows 10'];
-  const countries = [['🇺🇸','US',42],['🇩🇪','DE',18],['🇬🇧','GB',15],['🇳🇱','NL',12],['🇫🇷','FR',8],['🇨🇦','CA',7],['🇦🇺','AU',5]];
-  const versions = ['1.0.0','1.1.0','1.1.1','1.1.2'];
-
-  const rows = [];
-  const now = Date.now();
-  for (let i = 0; i < 87; i++) {
-    rows.push({
-      timestamp: new Date(now - Math.random() * 86400000 * 7).toISOString(),
-      appVersion: versions[Math.floor(Math.random() * versions.length)],
-      event: events[Math.floor(Math.random() * events.length)],
-      os: oses[Math.floor(Math.random() * oses.length)],
-      gpu: gpus[Math.floor(Math.random() * gpus.length)],
-      vram: `${(Math.random() * 16 + 8).toFixed(0)} GB`,
-      uptime: `${(Math.random() * 120).toFixed(0)}m`,
-      jobs: Math.floor(Math.random() * 25),
-      error: Math.random() < 0.08,
-    });
-  }
-  rows.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
-  return { rows, countries };
-}
-
-// ── Main init ─────────────────────────────────────────────────────────────────
-async function initDashboard() {
-  // Try real API
-  let realData = null;
-  try {
-    const r = await fetch(`${API}/api/admin/metrics`, { headers: { Authorization: `Bearer ${JWT}` } });
-    if (r.ok) realData = await r.json();
-  } catch {}
-
-  const demo = generateDemoData();
-  telemData = realData?.events || demo.rows;
-
-  const total = realData?.totalInstalls ?? telemData.length;
-  const active = realData?.activeInstances ?? Math.floor(telemData.filter(e => {
-    return Date.now() - new Date(e.timestamp) < 86400000;
-  }).length);
-  const jobs = realData?.totalJobs ?? telemData.filter(e => e.event === 'recast_complete').reduce((s, e) => s + (e.jobs||1), 0);
-  const errors = realData?.errorCount ?? telemData.filter(e => e.error).length;
-
-  // KPIs
-  document.getElementById('kpi-total').textContent = total;
-  document.getElementById('kpi-active').textContent = active;
-  document.getElementById('kpi-jobs').textContent = jobs;
-  document.getElementById('kpi-errors').textContent = errors;
-  document.getElementById('kpi-installs-sm').textContent = total;
-  document.getElementById('kpi-active-sm').textContent = active;
-  document.getElementById('kpi-total-trend').textContent = '↑ +12 this week';
-  document.getElementById('kpi-active-trend').textContent = `↑ ${active} in 24h`;
-  document.getElementById('kpi-jobs-trend').textContent = `↑ ${jobs} total`;
-  document.getElementById('kpi-errors-trend').textContent = errors > 0 ? `⚠ ${errors} errors` : '✓ Clean';
-  document.getElementById('kpi-errors-trend').className = `kpi-trend ${errors > 0 ? 'down' : 'up'}`;
-
-  // Badge
-  document.getElementById('telem-badge').textContent = telemData.length;
-  document.getElementById('telem-count-badge').textContent = `${telemData.length} events`;
-  document.getElementById('telem-all-badge').textContent = telemData.length;
-
-  // Installs over time chart (last 14 days)
-  const days14 = Array.from({length:14}, (_,i) => {
-    const d = new Date(); d.setDate(d.getDate() - 13 + i);
-    return d.toLocaleDateString('en', {month:'short',day:'numeric'});
-  });
-  const installCounts = days14.map((_,i) => Math.floor(2 + Math.random() * 15 + i * 0.8));
-  makeLineChart('chart-installs', days14, installCounts, '#7c3aed');
-
-  // Pipeline usage doughnut
-  const pipelineLabels = ['Wan 2.1','SAM 2.1','DWPose','LatentSync','Wav2Lip'];
-  const pipelineData = [87, 82, 79, 31, 18];
-  makeDoughnut('chart-pipeline', pipelineLabels, pipelineData);
-
-  // Active instances bar chart (last 7 days)
-  const days7 = Array.from({length:7}, (_,i) => {
-    const d = new Date(); d.setDate(d.getDate() - 6 + i);
-    return d.toLocaleDateString('en', {weekday:'short'});
-  });
-  const activeCounts = days7.map(() => Math.floor(3 + Math.random() * active * 1.5));
-  makeLineChart('chart-active', days7, activeCounts, '#22c55e');
-
-  // Growth chart (users page)
-  makeLineChart('chart-growth', days14, installCounts.map((v,i,a) => a.slice(0,i+1).reduce((s,x)=>s+x,0)), '#3b82f6');
-
-  // Geo bar chart
-  const geoLabels = demo.countries.map(c => c[1]);
-  const geoData = demo.countries.map(c => c[2]);
-  makeBarChart('chart-geo', geoLabels, geoData, '#7c3aed');
-
-  // Geo list in sidebar
-  const geoList = document.getElementById('geo-list');
-  const maxGeo = Math.max(...geoData);
-  geoList.innerHTML = demo.countries.map(([flag, country, count]) => `
-    <div class="geo-row">
-      <span class="geo-flag">${flag}</span>
-      <span style="min-width:30px;font-size:12px;color:var(--muted)">${country}</span>
-      <div class="geo-bar-wrap"><div class="geo-bar" style="width:${Math.round(count/maxGeo*100)}%"></div></div>
-      <span class="geo-count">${count}</span>
-    </div>`).join('');
-
-  // Users page KPIs
-  document.getElementById('u-total').textContent = total;
-  document.getElementById('u-today').textContent = Math.floor(total * 0.08);
-  document.getElementById('u-week').textContent = Math.floor(total * 0.31);
-  document.getElementById('u-versions').textContent = 'v1.0.0';
-
-  // Telemetry table
-  renderTelemTable();
-  renderAllTelemTable();
-  renderErrorsTable();
-}
-
-function fmt(iso) {
-  return new Date(iso).toLocaleString('en', {month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'});
-}
-
-function renderTelemTable() {
-  const tbody = document.getElementById('telem-tbody');
-  const rows = telemData.slice(0, 20);
-  if (!rows.length) { tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:32px">No events yet</td></tr>'; return; }
-  tbody.innerHTML = rows.map(r => `<tr>
-    <td class="td-mono">${fmt(r.timestamp)}</td>
-    <td><span style="font-size:11px;background:rgba(124,58,237,.15);color:#a855f7;padding:2px 7px;border-radius:5px">${r.appVersion || '—'}</span></td>
-    <td>${r.event || '—'}</td>
-    <td style="color:var(--muted)">${r.os || '—'}</td>
-    <td style="color:var(--muted);font-size:12px">${r.gpu || '—'}</td>
-    <td><span class="status-pill ${r.error ? 'error' : 'active'}">${r.error ? 'error' : 'ok'}</span></td>
-  </tr>`).join('');
-}
-
-function renderAllTelemTable() {
-  const tbody = document.getElementById('telem-all-tbody');
-  if (!telemData.length) { tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:32px">No events</td></tr>'; return; }
-  tbody.innerHTML = telemData.map(r => `<tr>
-    <td class="td-mono">${fmt(r.timestamp)}</td>
-    <td>${r.appVersion || '—'}</td>
-    <td>${r.event || '—'}</td>
-    <td style="color:var(--muted)">${r.os || '—'}</td>
-    <td style="font-size:12px;color:var(--muted)">${r.gpu || '—'}</td>
-    <td style="color:var(--muted)">${r.vram || '—'}</td>
-    <td style="color:var(--muted)">${r.uptime || '—'}</td>
-    <td>${r.jobs ?? '—'}</td>
-  </tr>`).join('');
-}
-
-function renderErrorsTable() {
-  const errors = telemData.filter(e => e.error);
-  document.getElementById('err-badge').textContent = errors.length;
-  const tbody = document.getElementById('err-tbody');
-  if (!errors.length) { tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--green);padding:32px">✓ No errors recorded</td></tr>'; return; }
-  tbody.innerHTML = errors.map(r => `<tr>
-    <td class="td-mono">${fmt(r.timestamp)}</td>
-    <td>${r.appVersion || '—'}</td>
-    <td style="color:var(--red)">${r.errorMessage || 'Unknown error'}</td>
-    <td style="color:var(--muted);font-size:12px">${r.gpu || '—'}</td>
-  </tr>`).join('');
-}
-
+// ── GitHub Releases ───────────────────────────────────────────────────────────
 async function loadReleases() {
   const tbody = document.getElementById('releases-tbody');
+  if (!tbody) return;
   try {
     const r = await fetch('https://api.github.com/repos/Xonarouss/genuxaistudio/releases?per_page=10');
-    const releases = await r.json();
-    if (!releases.length) { tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:32px">No releases yet</td></tr>'; return; }
-    tbody.innerHTML = releases.map(rel => {
-      const totalDl = rel.assets.reduce((s, a) => s + a.download_count, 0);
-      const assets = rel.assets.map(a => `<span style="font-size:11px;background:var(--surface2);padding:2px 7px;border-radius:5px;margin-right:4px">${a.name.split('_').pop()}</span>`).join('');
-      return `<tr>
-        <td><span style="font-size:11px;background:rgba(124,58,237,.15);color:#a855f7;padding:2px 8px;border-radius:5px">${rel.tag_name}</span></td>
-        <td style="font-weight:500">${rel.name}</td>
-        <td class="td-mono">${fmt(rel.published_at)}</td>
-        <td style="font-weight:600;color:var(--green)">${totalDl.toLocaleString()}</td>
-        <td>${assets || '<span style="color:var(--muted)">—</span>'}</td>
-      </tr>`;
+    const rels = await r.json();
+    if (!rels.length) {
+      tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;padding:32px;color:var(--muted)">No releases published yet</td></tr>`;
+      return;
+    }
+    tbody.innerHTML = rels.map(rel => {
+      const dls = rel.assets.reduce((sum, a) => sum + (a.download_count || 0), 0);
+      const assetTags = rel.assets.map(a => `<span style="font-size:11px;background:var(--surface2);padding:2px 8px;border-radius:6px;margin-right:6px">${a.name}</span>`).join('');
+      return `
+        <tr>
+          <td><span style="font-size:11px;background:var(--purple-bg);color:var(--purple-l);padding:3px 9px;border-radius:6px;font-weight:700">${rel.tag_name}</span></td>
+          <td style="font-weight:600">${rel.name}</td>
+          <td class="td-mono">${new Date(rel.published_at).toLocaleDateString()}</td>
+          <td style="color:var(--green);font-weight:700">${dls.toLocaleString()}</td>
+          <td>${assetTags || '—'}</td>
+        </tr>
+      `;
     }).join('');
-  } catch {
-    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:32px">Could not load releases</td></tr>';
+  } catch (e) {
+    tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;padding:32px;color:var(--muted)">Unable to load releases: ${e.message}</td></tr>`;
   }
 }
 
-// Auto-refresh telemetry every 30s
-setInterval(async () => {
-  try {
-    const r = await fetch(`${API}/api/admin/metrics`, { headers: { Authorization: `Bearer ${JWT}` } });
-    if (r.ok) {
-      const d = await r.json();
-      if (d.events) { telemData = d.events; renderTelemTable(); renderAllTelemTable(); renderErrorsTable(); toast('📡 Telemetry refreshed'); }
-    }
-  } catch {}
-}, 30000);
+// ── UI Helpers ────────────────────────────────────────────────────────────────
+function toast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 3500);
+}
+
+setInterval(() => {
+  document.getElementById('clock').textContent = new Date().toLocaleTimeString('en', {
+    hour: '2-digit', minute: '2-digit', second: '2-digit'
+  });
+}, 1000);
 </script>
 </body>
 </html>

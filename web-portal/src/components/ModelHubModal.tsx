@@ -140,13 +140,11 @@ export const INITIAL_MODELS: ModelItem[] = [
   },
   {
     id: 'wav2lip',
-    // 272 MB — Wav2Lip GAN checkpoint (fast fallback lip sync)
-    // OPTIONAL: faster alternative to LatentSync
     name: 'Wav2Lip GAN — Fast Lip Sync Fallback',
     category: 'lipsync',
-    source: 'Rudrabha / HuggingFace Mirror',
-    sourceUrl: 'https://github.com/Rudrabha/Wav2Lip',
-    size: '272 MB',
+    source: 'Nekochu / HuggingFace Mirror',
+    sourceUrl: 'https://huggingface.co/Nekochu/Wav2Lip',
+    size: '435 MB',
     status: 'missing',
     progress: 0,
     localPath: '~/.cache/genux/models/wav2lip_gan.pth',
