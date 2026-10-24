@@ -1,5 +1,5 @@
 import React from 'react';
-import { Download, BookOpen, CheckCircle2, Cpu } from 'lucide-react';
+import { Download, BookOpen, CheckCircle2, Cpu, Smartphone } from 'lucide-react';
 import { BeforeAfterSlider } from './BeforeAfterSlider';
 
 interface HeroSectionProps {
@@ -46,7 +46,7 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
           The high-performance local AI workstation for Windows. Import any TikTok, Instagram Reel, or YouTube video, select subjects with SAM 2.1 zero-shot tracking, and recast them with Wan 2.1 14B diffusion — 100% private, zero subscription fees, and zero cloud queues.
         </p>
 
-        {/* Dual Primary Action Buttons */}
+        {/* Action Buttons */}
         <div className="flex flex-col sm:flex-row items-center justify-center gap-3.5 mb-12">
           <button
             onClick={onDownloadExe}
@@ -55,6 +55,18 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
             <Download className="w-4 h-4" />
             <span>Download for Windows (.exe)</span>
           </button>
+
+          {/* Android Download - Disabled with Coming Soon */}
+          <div
+            title="Android companion client is currently in development"
+            className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-3.5 rounded-xl text-sm font-bold bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed select-none opacity-80"
+          >
+            <Smartphone className="w-4 h-4 text-slate-400" />
+            <span>Android</span>
+            <span className="ml-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-200 text-slate-600 uppercase tracking-wider">
+              Coming soon
+            </span>
+          </div>
 
           <button
             onClick={onOpenDocs}

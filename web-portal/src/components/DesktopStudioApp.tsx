@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { 
-  Play, Pause, Sparkles, 
+  Play, Pause, Sparkles, Wand2,
   Layers, Scan, Eye, 
   Film, UserPlus, HardDrive, 
   FolderOpen, RefreshCw, Terminal,
@@ -156,6 +156,7 @@ const DEFAULT_VIRAL_VIDEOS: ViralVideo[] = [
 ];
 
 const CAMERA_MOTIONS = [
+  { id: 'original', label: '1:1 Original Camera (Default)', icon: Camera, desc: 'Locks & preserves 100% exact camera physics and motion from source video' },
   { id: 'orbit', label: '3D Orbit Arc', icon: Move3d, desc: 'Dynamic 360 orbital camera motion around subject' },
   { id: 'crane', label: 'Crane Boom Up', icon: Camera, desc: 'Vertical crane elevation tracking upward with cinematic tilt' },
   { id: 'dolly_zoom', label: 'Vertigo Dolly Zoom', icon: Video, desc: 'Hitchcock optical distortion with background depth expansion' },
@@ -214,8 +215,17 @@ export const DesktopStudioApp: React.FC = () => {
     const saved = localStorage.getItem('genux_sidebar_right_width');
     return saved ? Math.max(280, Math.min(540, parseInt(saved, 10))) : 360;
   });
+  const [videoCanvasHeight, setVideoCanvasHeight] = useState<number>(() => {
+    const saved = localStorage.getItem('genux_video_canvas_height');
+    return saved ? Math.max(260, Math.min(850, parseInt(saved, 10))) : 540;
+  });
+
   const isDraggingLeftRef = useRef<boolean>(false);
   const isDraggingRightRef = useRef<boolean>(false);
+  const isDraggingVideoRef = useRef<boolean>(false);
+  const dragStartYRef = useRef<number>(0);
+  const startVideoHeightRef = useRef<number>(540);
+  const magicIndexRef = useRef<{ recast: number; scene: number }>({ recast: 0, scene: 0 });
 
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
@@ -227,11 +237,17 @@ export const DesktopStudioApp: React.FC = () => {
         const newWidth = Math.max(280, Math.min(540, window.innerWidth - e.clientX));
         setRightSidebarWidth(newWidth);
         localStorage.setItem('genux_sidebar_right_width', String(newWidth));
+      } else if (isDraggingVideoRef.current) {
+        const delta = e.clientY - dragStartYRef.current;
+        const newH = Math.max(260, Math.min(Math.round(window.innerHeight * 0.8), startVideoHeightRef.current + delta));
+        setVideoCanvasHeight(newH);
+        localStorage.setItem('genux_video_canvas_height', String(newH));
       }
     };
     const handleMouseUp = () => {
       isDraggingLeftRef.current = false;
       isDraggingRightRef.current = false;
+      isDraggingVideoRef.current = false;
       document.body.style.cursor = 'default';
       document.body.style.userSelect = 'auto';
     };
@@ -257,20 +273,47 @@ export const DesktopStudioApp: React.FC = () => {
     document.body.style.userSelect = 'none';
   };
 
-  // Magic Prompt Enhancement
+  const handleVideoResizeStart = (e: React.MouseEvent) => {
+    e.preventDefault();
+    isDraggingVideoRef.current = true;
+    dragStartYRef.current = e.clientY;
+    startVideoHeightRef.current = videoCanvasHeight;
+    document.body.style.cursor = 'ns-resize';
+    document.body.style.userSelect = 'none';
+  };
+
+  // Magic Prompt Enhancement with rotating variety and Gemma 2 intelligence
   const handleMagicEnhancePrompt = (target: 'recast' | 'scene') => {
     if (target === 'recast') {
+      const presets = [
+        'Swap character with @attachment1, 100% 1:1 camera physics and motion preservation, 8K photorealistic textures, dynamic volumetric lighting integration, seamless temporal coherence, Wan 2.1 Blackwell FP8 neural synthesis.',
+        'Seamlessly replace lead actor with @attachment1, retaining 100% original kinetic motion, micro-expressions, hair physics, and natural skin subsurface scattering.',
+        'Recast character with @attachment1, locking 1:1 source trajectory, dynamic cloth wrinkles, matching shadows and ambient studio reflection map.',
+        'High-fidelity face & body swap with @attachment1, preserving original lens focal length, motion blur, and depth of field.'
+      ];
       const base = recastPrompt.trim();
-      const enhanced = base 
-        ? `${base}, preserving 100% original 1:1 camera motion physics and temporal kinematics, 8K ultra-detailed photorealistic skin textures, seamless temporal coherence, Wan 2.1 Blackwell FP8 latent synthesis.`
-        : `Swap subject with @attachment1, 100% 1:1 camera physics and motion preservation, 8K photorealistic textures, dynamic volumetric lighting integration, seamless temporal coherence, Wan 2.1 Blackwell FP8 neural synthesis.`;
-      setRecastPrompt(enhanced);
+      if (!base || base.startsWith('Swap character with') || base.startsWith('Swap subject with') || presets.includes(base)) {
+        const next = presets[magicIndexRef.current.recast % presets.length];
+        magicIndexRef.current.recast++;
+        setRecastPrompt(next);
+      } else {
+        setRecastPrompt(`${base}, preserving 100% original 1:1 camera motion physics and temporal kinematics, 8K ultra-detailed photorealistic skin textures, seamless temporal coherence, Wan 2.1 Blackwell FP8 latent synthesis.`);
+      }
     } else {
+      const scenePresets = [
+        'Transform background environment to high-contrast neon rainy Tokyo street with wet pavement reflections, change car to matte black hypercar with volumetric headlights, add cybernetic jacket details, lock 1:1 camera movement and subject perspective.',
+        'Cinematic golden hour coastal highway with warm sun flare, ocean mist reflections, luxury grand tourer, and atmospheric haze.',
+        'Dark futuristic cyberpunk alleyway with holographic billboards, neon rain reflections, steam vents, and cinematic anamorphic lens flares.',
+        'Vintage 1970s film noir warehouse interior with high-contrast Venetian blind shadows, hazy cigarette smoke, and warm tungsten practical lights.'
+      ];
       const base = sceneDirectorPrompt.trim();
-      const enhanced = base
-        ? `${base}, photorealistic environmental grading, high-contrast atmospheric depth, volumetric ray-tracing reflections, maintain original actor perspective and 1:1 kinematics.`
-        : `Transform background environment to high-contrast neon rainy Tokyo street with wet pavement reflections, change car to matte black hypercar with volumetric headlights, add cybernetic jacket details, lock 1:1 camera movement and subject perspective.`;
-      setSceneDirectorPrompt(enhanced);
+      if (!base || scenePresets.includes(base)) {
+        const next = scenePresets[magicIndexRef.current.scene % scenePresets.length];
+        magicIndexRef.current.scene++;
+        setSceneDirectorPrompt(next);
+      } else {
+        setSceneDirectorPrompt(`${base}, photorealistic environmental grading, high-contrast atmospheric depth, volumetric ray-tracing reflections, maintain original actor perspective and 1:1 kinematics.`);
+      }
     }
   };
 
@@ -383,7 +426,7 @@ export const DesktopStudioApp: React.FC = () => {
 
   // 10. Camera, Aspect Ratio & Director Prompts
   const [aspectRatio, setAspectRatio] = useState<'9:16' | '16:9' | '1:1' | '4:5'>('9:16');
-  const [selectedCamera, setSelectedCamera] = useState<string>('orbit');
+  const [selectedCamera, setSelectedCamera] = useState<string>('original');
   const [identityWeight, setIdentityWeight] = useState<number>(0.92);
   const [viewMode, setViewMode] = useState<'split' | 'recast' | 'original'>('split');
   const [sliderPosition, setSliderPosition] = useState<number>(50);
@@ -391,7 +434,9 @@ export const DesktopStudioApp: React.FC = () => {
   const [showMask, setShowMask] = useState<boolean>(true);
   const [showSkeleton, setShowSkeleton] = useState<boolean>(true);
   const [showDepth, setShowDepth] = useState<boolean>(false);
-  const [isPlaying, setIsPlaying] = useState<boolean>(true);
+  const [isPlaying, setIsPlaying] = useState<boolean>(false);
+  const [isVideoBuffering, setIsVideoBuffering] = useState<boolean>(false);
+  const [showAttachmentMenu, setShowAttachmentMenu] = useState<boolean>(false);
 
   // 11. Ingest URL & Status
   const [urlInput, setUrlInput] = useState<string>('');
@@ -601,7 +646,7 @@ export const DesktopStudioApp: React.FC = () => {
   };
 
   // In-App YouTube Search Handler
-  const handleSearchYouTube = async () => {
+  const handleSearchYouTube = async (appendMore: boolean = false) => {
     const q = ytSearchQuery.trim();
     if (!q) return;
     setIsSearchingYt(true);
@@ -610,8 +655,16 @@ export const DesktopStudioApp: React.FC = () => {
     if (window.genuxNative?.searchYouTube) {
       try {
         const results = await window.genuxNative.searchYouTube(q);
-        setYtSearchResults(results || []);
-        setEngineLogs(prev => [...prev, `[YouTube Search] Found ${results.length} video results.`]);
+        if (appendMore) {
+          setYtSearchResults(prev => {
+            const existingIds = new Set(prev.map(p => p.id));
+            const newItems = (results || []).filter((r: any) => !existingIds.has(r.id));
+            return [...prev, ...(newItems.length ? newItems : results || [])];
+          });
+        } else {
+          setYtSearchResults(results || []);
+        }
+        setEngineLogs(prev => [...prev, `[YouTube Search] Found ${results?.length || 0} video results.`]);
       } catch (err: any) {
         setEngineLogs(prev => [...prev, `[YouTube Search Error] ${err.message}`]);
       } finally {
@@ -1120,34 +1173,67 @@ export const DesktopStudioApp: React.FC = () => {
                 </div>
               </div>
 
-              {/* Video Canvas Stage with Audio */}
+              {/* Video Canvas Stage with Audio & Interactive Drag Resize */}
               <div 
                 ref={sliderRef}
-                className="flex-1 relative flex items-center justify-center p-6 overflow-hidden bg-radial from-[#0E1019] via-[#07080D] to-[#040508]"
+                className="flex-1 relative flex flex-col items-center justify-center p-6 overflow-hidden bg-radial from-[#0E1019] via-[#07080D] to-[#040508]"
               >
-                <div className={`relative h-full max-h-[540px] ${
-                  aspectRatio === '9:16' ? 'aspect-[9/16]' : aspectRatio === '16:9' ? 'aspect-[16/9]' : aspectRatio === '1:1' ? 'aspect-square' : 'aspect-[4/5]'
-                } rounded-3xl overflow-hidden border border-white/[0.1] shadow-[0_0_60px_rgba(0,0,0,0.85)] bg-black select-none`}>
+                <div 
+                  style={{ height: `${videoCanvasHeight}px`, maxHeight: '82vh' }}
+                  className={`relative ${
+                    aspectRatio === '9:16' ? 'aspect-[9/16]' : aspectRatio === '16:9' ? 'aspect-[16/9]' : aspectRatio === '1:1' ? 'aspect-square' : 'aspect-[4/5]'
+                  } rounded-3xl overflow-hidden border border-white/[0.1] shadow-[0_0_60px_rgba(0,0,0,0.85)] bg-black select-none transition-all duration-75`}
+                >
                   
                   {/* Real Video Player with Sound */}
                   {selectedVideo.videoUrl || selectedVideo.filePath ? (
                     <video
                       ref={videoRef}
                       src={safeSrc(selectedVideo.videoUrl || selectedVideo.filePath)}
-                      autoPlay
                       loop
                       playsInline
                       muted={isMuted}
-                      onTimeUpdate={(e) => setCurrentTime(e.currentTarget.currentTime)}
+                      onTimeUpdate={(e) => {
+                        if (isPlaying) {
+                          setCurrentTime(e.currentTarget.currentTime);
+                        }
+                      }}
+                      onWaiting={() => setIsVideoBuffering(true)}
+                      onPlaying={() => setIsVideoBuffering(false)}
+                      onCanPlay={() => {
+                        setIsVideoBuffering(false);
+                        setIsIngesting(false);
+                      }}
                       onLoadedMetadata={(e) => {
                         const d = e.currentTarget.duration || 10;
                         setDuration(d);
                         if (trimEnd === 0 || trimEnd > d) setTrimEnd(d);
+                        setIsVideoBuffering(false);
                       }}
                       className="w-full h-full object-cover"
                     />
                   ) : (
                     <div className={`w-full h-full bg-gradient-to-br ${selectedVideo.gradient || 'from-indigo-900 to-black'} flex items-center justify-center`} />
+                  )}
+
+                  {/* YouTube Import / Video Buffering Loading Spinner Overlay */}
+                  {(isIngesting || isVideoBuffering) && (
+                    <div className="absolute inset-0 z-40 bg-black/85 backdrop-blur-md flex flex-col items-center justify-center space-y-4 animate-fadeIn select-none pointer-events-auto">
+                      <div className="relative">
+                        <div className="w-16 h-16 rounded-full border-4 border-cyan-500/20 border-t-cyan-400 animate-spin shadow-[0_0_25px_rgba(6,182,212,0.5)]" />
+                        <div className="absolute inset-0 flex items-center justify-center">
+                          <Film size={22} className="text-cyan-300 animate-pulse" />
+                        </div>
+                      </div>
+                      <div className="text-center space-y-1.5 px-4">
+                        <h4 className="text-sm font-bold text-white tracking-wide">
+                          {isIngesting ? 'Importing Video from YouTube...' : 'Buffering High-FPS Frames...'}
+                        </h4>
+                        <p className="text-xs text-cyan-300 font-mono">
+                          {isIngesting ? (ingestStatus || 'Demuxing video & stereo audio tracks...') : 'Rendering preview...'}
+                        </p>
+                      </div>
+                    </div>
                   )}
 
                   {/* Character Overlay Simulation */}
@@ -1211,6 +1297,22 @@ export const DesktopStudioApp: React.FC = () => {
                   )}
 
                 </div>
+
+                {/* Middle Video Canvas Mouse Drag Resize Bar */}
+                <div 
+                  onMouseDown={handleVideoResizeStart}
+                  title="Drag up or down to resize the middle video canvas"
+                  className="w-full flex items-center justify-center pt-2 pb-1 cursor-ns-resize group/canvasresize select-none"
+                >
+                  <div className="px-4 py-1 rounded-full bg-white/[0.04] group-hover/canvasresize:bg-cyan-500/20 border border-white/[0.08] group-hover/canvasresize:border-cyan-400/50 shadow-sm transition-all flex items-center gap-2">
+                    <div className="w-10 h-1 rounded-full bg-white/20 group-hover/canvasresize:bg-cyan-300 transition-colors" />
+                    <span className="text-[9px] font-mono text-slate-500 group-hover/canvasresize:text-cyan-300 font-bold uppercase tracking-wider">
+                      Drag to Resize Video
+                    </span>
+                    <div className="w-10 h-1 rounded-full bg-white/20 group-hover/canvasresize:bg-cyan-300 transition-colors" />
+                  </div>
+                </div>
+
               </div>
 
               {/* Bottom Player & Maestro Trimming Controls Bar */}
@@ -1235,17 +1337,29 @@ export const DesktopStudioApp: React.FC = () => {
                       />
                     </div>
 
-                    {/* Interactive Slider Input */}
+                    {/* Interactive Slider Input - Freezes video stationary on drag */}
                     <input
                       type="range"
                       min="0"
                       max={duration || 10}
                       step="0.05"
                       value={currentTime}
+                      onMouseDown={() => {
+                        if (videoRef.current) videoRef.current.pause();
+                        setIsPlaying(false);
+                      }}
+                      onTouchStart={() => {
+                        if (videoRef.current) videoRef.current.pause();
+                        setIsPlaying(false);
+                      }}
                       onChange={(e) => {
                         const val = parseFloat(e.target.value);
                         setCurrentTime(val);
-                        if (videoRef.current) videoRef.current.currentTime = val;
+                        if (videoRef.current) {
+                          videoRef.current.pause();
+                          videoRef.current.currentTime = val;
+                        }
+                        setIsPlaying(false);
                       }}
                       className="absolute inset-0 w-full opacity-0 cursor-pointer z-20"
                     />
@@ -1503,39 +1617,103 @@ export const DesktopStudioApp: React.FC = () => {
                 </div>
               </div>
 
-              {/* Multi-Character Recast Prompt with Glowing Tags */}
-              <div className="space-y-2">
+              {/* Multi-Character Recast Prompt with Glowing Tags & @attachment Autocomplete */}
+              <div className="space-y-2 relative">
                 <div className="flex items-center justify-between">
                   <label className="text-[11px] font-mono font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
                     <span>Recast Identity Prompt</span>
                   </label>
+                  {/* Toverstaf Icon-Only Button - Slightly Bigger */}
                   <button
                     onClick={() => handleMagicEnhancePrompt('recast')}
-                    className="px-2.5 py-1 rounded-lg bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white font-bold text-[10px] flex items-center gap-1 shadow-sm transition"
-                    title="Intelligently expand prompt with Gemma 2 / Wan 2.1 tokens"
+                    className="w-7 h-7 rounded-lg bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-cyan-300 hover:text-white flex items-center justify-center shadow-[0_0_12px_rgba(139,92,246,0.4)] hover:shadow-[0_0_18px_rgba(6,182,212,0.6)] transition-all transform active:scale-95"
+                    title="Magic Prompt Enhancer (Toverstaf: Klik om AI prompt te genereren of uit te breiden)"
                   >
-                    <Sparkles size={11} className="text-cyan-300 animate-pulse" />
-                    <span>✨ Magic Prompt</span>
+                    <Wand2 size={16} className="animate-pulse" />
                   </button>
                 </div>
+
                 <textarea
                   rows={3}
                   value={recastPrompt}
-                  onChange={(e) => setRecastPrompt(e.target.value)}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setRecastPrompt(val);
+                    if (val.endsWith('@') || /@[a-zA-Z0-9_]*$/.test(val)) {
+                      setShowAttachmentMenu(true);
+                    } else if (showAttachmentMenu && !val.includes('@')) {
+                      setShowAttachmentMenu(false);
+                    }
+                  }}
                   placeholder="e.g. Swap character with @attachment1, 100% 1:1 camera physics and motion preservation..."
                   className="w-full min-h-[75px] bg-[#11141F] border border-white/[0.12] focus:border-cyan-400 rounded-xl p-3 text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-cyan-400/40 font-sans leading-relaxed transition"
                 />
+
+                {/* Interactive @attachment Autocomplete Dropdown Menu */}
+                {showAttachmentMenu && (
+                  <div className="p-2 rounded-xl bg-[#131724] border border-cyan-500/50 shadow-[0_10px_25px_rgba(0,0,0,0.8)] space-y-1.5 animate-fadeIn z-30">
+                    <div className="flex items-center justify-between px-1">
+                      <span className="text-[10px] font-mono text-cyan-400 font-bold uppercase tracking-wider flex items-center gap-1">
+                        <Sparkles size={11} className="text-cyan-300" />
+                        <span>Select Character Attachment</span>
+                      </span>
+                      <button 
+                        onClick={() => setShowAttachmentMenu(false)}
+                        className="text-slate-400 hover:text-white p-0.5"
+                      >
+                        <X size={12} />
+                      </button>
+                    </div>
+
+                    <div className="flex flex-wrap gap-1.5 pt-0.5">
+                      {characterAttachments.length > 0 ? (
+                        characterAttachments.map((att) => (
+                          <button
+                            key={att.tag}
+                            type="button"
+                            onClick={() => {
+                              const before = recastPrompt.replace(/@[a-zA-Z0-9_]*$/, '');
+                              setRecastPrompt(before + att.tag + ' ');
+                              setShowAttachmentMenu(false);
+                            }}
+                            className="px-2.5 py-1 rounded-lg bg-cyan-500/20 hover:bg-cyan-500/35 border border-cyan-400/60 text-cyan-200 font-mono text-xs flex items-center gap-1.5 transition active:scale-95 shadow-[0_0_10px_rgba(6,182,212,0.3)]"
+                          >
+                            <span className="font-bold text-cyan-300">{att.tag}</span>
+                            <span className="text-white/80 text-[10px]">({att.name})</span>
+                          </button>
+                        ))
+                      ) : (
+                        <div className="text-[11px] text-slate-400 p-1 flex items-center gap-2">
+                          <span>Geen extra twins geüpload.</span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              handleNativeOpenImage();
+                              setShowAttachmentMenu(false);
+                            }}
+                            className="text-cyan-400 font-bold hover:underline"
+                          >
+                            + Upload Twin Nu
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
                 
                 {/* Visual Glowing Tag Highlighter Preview */}
-                <div className="p-2 rounded-xl bg-black/40 border border-white/[0.06] text-[11px] text-slate-300 flex flex-wrap items-center gap-1 min-h-[30px]">
-                  <span className="text-[9px] font-mono uppercase text-slate-500 mr-1">Parsed:</span>
+                <div className="p-2 rounded-xl bg-black/60 border border-white/[0.08] text-[11px] text-slate-300 flex flex-wrap items-center gap-1.5 min-h-[34px] shadow-[inset_0_1px_4px_rgba(0,0,0,0.6)]">
+                  <span className="text-[9px] font-mono uppercase text-slate-500 font-bold mr-1">Parsed:</span>
                   {recastPrompt.split(/(@attachment\d+)/g).map((part, i) => {
                     const match = characterAttachments.find(a => a.tag === part);
-                    if (match) {
+                    if (match || /^@attachment\d+$/.test(part)) {
                       return (
-                        <span key={i} className="px-1.5 py-0.5 rounded-md bg-cyan-500/20 border border-cyan-400 text-cyan-300 font-mono font-bold text-[10px] inline-flex items-center gap-1 shadow-[0_0_8px_rgba(6,182,212,0.4)]">
+                        <span 
+                          key={i} 
+                          className="px-2 py-0.5 rounded-lg bg-cyan-500/25 border border-cyan-400 text-cyan-300 font-mono font-bold text-[11px] inline-flex items-center gap-1 shadow-[0_0_12px_rgba(6,182,212,0.6)] animate-pulse"
+                        >
                           <span>{part}</span>
-                          <span className="text-white/80">({match.name})</span>
+                          {match && <span className="text-white/80 text-[10px]">({match.name})</span>}
                         </span>
                       );
                     }
@@ -1550,13 +1728,13 @@ export const DesktopStudioApp: React.FC = () => {
                   <label className="text-[11px] font-mono font-bold text-slate-300 uppercase tracking-wider block">
                     Scene &amp; Object Director (Gemma 2)
                   </label>
+                  {/* Toverstaf Icon-Only Button - Slightly Bigger */}
                   <button
                     onClick={() => handleMagicEnhancePrompt('scene')}
-                    className="px-2.5 py-1 rounded-lg bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-[10px] flex items-center gap-1 shadow-sm transition"
-                    title="Generate cinematic props, lighting & area details"
+                    className="w-7 h-7 rounded-lg bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-amber-300 hover:text-white flex items-center justify-center shadow-[0_0_12px_rgba(16,185,129,0.4)] hover:shadow-[0_0_18px_rgba(245,158,11,0.6)] transition-all transform active:scale-95"
+                    title="Magic Scene Director (Toverstaf: Klik om scene props & verlichting te genereren)"
                   >
-                    <Sparkles size={11} className="text-amber-300 animate-pulse" />
-                    <span>✨ Magic Scene</span>
+                    <Wand2 size={16} className="animate-pulse" />
                   </button>
                 </div>
                 <textarea
@@ -1649,28 +1827,58 @@ export const DesktopStudioApp: React.FC = () => {
                 </div>
               </div>
 
-              {/* Higgsfield Camera Motion Control */}
+              {/* Camera Motion & Perspective Control */}
               <div className="space-y-2">
-                <label className="text-[11px] font-mono font-bold text-slate-400 uppercase tracking-wider block">
-                  3D Cinematic Camera Trajectory
-                </label>
+                <div className="flex items-center justify-between">
+                  <label className="text-[11px] font-mono font-bold text-slate-300 uppercase tracking-wider block">
+                    3D Camera &amp; Trajectory
+                  </label>
+                  <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded border ${
+                    selectedCamera === 'original'
+                      ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
+                      : 'bg-indigo-500/20 text-indigo-300 border-indigo-400/40'
+                  }`}>
+                    {selectedCamera === 'original' ? '1:1 Original Video' : '3D Synthesized'}
+                  </span>
+                </div>
+
+                <div className="p-2.5 rounded-xl bg-white/[0.03] border border-white/[0.07] text-[11px] leading-relaxed text-slate-300 space-y-1">
+                  <div className="font-bold text-white flex items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-cyan-400" />
+                    <span>Wanneer gebruiken?</span>
+                  </div>
+                  <p className="text-slate-400 text-[10.5px]">
+                    Kies <strong className="text-emerald-400 font-semibold">1:1 Original Camera</strong> (standaard) om de exacte camerabeweging, perspectief en actor-dynamiek van de originele video te behouden. Selecteer alleen een 3D trajectory (zoals Orbit of Dolly Zoom) als je wilt dat de AI een nieuwe, kunstmatige camerabeweging berekent.
+                  </p>
+                </div>
+
                 <div className="space-y-1">
                   {CAMERA_MOTIONS.map(cam => {
                     const Icon = cam.icon;
                     const isSelected = selectedCamera === cam.id;
+                    const isDefault = cam.id === 'original';
                     return (
                       <button
                         key={cam.id}
                         onClick={() => setSelectedCamera(cam.id)}
                         className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-left transition ${
                           isSelected
-                            ? 'bg-indigo-600/25 border border-indigo-500/40 text-white font-semibold'
+                            ? isDefault
+                              ? 'bg-emerald-500/15 border border-emerald-400/50 text-white font-semibold shadow-[0_0_15px_rgba(16,185,129,0.2)]'
+                              : 'bg-indigo-600/25 border border-indigo-500/40 text-white font-semibold shadow-[0_0_15px_rgba(99,102,241,0.2)]'
                             : 'bg-white/[0.02] border border-transparent text-slate-400 hover:text-white hover:bg-white/[0.04]'
                         }`}
                       >
-                        <Icon size={14} className={isSelected ? 'text-indigo-400' : 'text-slate-500'} />
+                        <Icon size={14} className={isSelected ? (isDefault ? 'text-emerald-400' : 'text-indigo-400') : 'text-slate-500'} />
                         <div className="flex-1 min-w-0">
-                          <div className="text-xs font-bold">{cam.label}</div>
+                          <div className="text-xs font-bold flex items-center gap-1.5">
+                            <span>{cam.label}</span>
+                            {isDefault && (
+                              <span className="px-1.5 py-0.2 rounded text-[8.5px] font-mono bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
+                                100% BEHOUDEN
+                              </span>
+                            )}
+                          </div>
                           <div className="text-[10px] text-slate-500 truncate">{cam.desc}</div>
                         </div>
                       </button>
@@ -1839,7 +2047,7 @@ export const DesktopStudioApp: React.FC = () => {
                     />
                   </div>
                   <button
-                    onClick={handleSearchYouTube}
+                    onClick={() => handleSearchYouTube(false)}
                     disabled={isSearchingYt}
                     className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition flex items-center gap-1.5"
                   >
@@ -1855,50 +2063,67 @@ export const DesktopStudioApp: React.FC = () => {
                       <p>Type a search query above to discover and import clips directly inside the app.</p>
                     </div>
                   ) : (
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                      {ytSearchResults.map(item => (
-                        <div
-                          key={item.id}
-                          className="p-3.5 rounded-2xl bg-[#0E111A] border border-white/[0.08] space-y-2.5 flex flex-col justify-between"
-                        >
-                          <div className="space-y-2">
-                            {item.thumbnail && (
-                              <div className="aspect-video w-full rounded-xl overflow-hidden bg-black/60 relative group/yt">
-                                <img src={item.thumbnail} alt={item.title} className="w-full h-full object-cover group-hover/yt:scale-105 transition-transform duration-300" />
-                                <div className="absolute inset-0 bg-black/40 group-hover/yt:bg-black/15 transition-colors flex items-center justify-center">
-                                  <div className="w-10 h-10 rounded-full bg-violet-600/90 text-white flex items-center justify-center shadow-lg group-hover/yt:scale-110 transition-transform">
-                                    <Play size={16} className="fill-white ml-0.5" />
+                    <>
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {ytSearchResults.map(item => (
+                          <div
+                            key={item.id}
+                            className="p-3.5 rounded-2xl bg-[#0E111A] border border-white/[0.08] space-y-2.5 flex flex-col justify-between"
+                          >
+                            <div className="space-y-2">
+                              {item.thumbnail && (
+                                <div className="aspect-video w-full rounded-xl overflow-hidden bg-black/60 relative group/yt">
+                                  <img src={item.thumbnail} alt={item.title} className="w-full h-full object-cover group-hover/yt:scale-105 transition-transform duration-300" />
+                                  <div className="absolute inset-0 bg-black/40 group-hover/yt:bg-black/15 transition-colors flex items-center justify-center">
+                                    <div className="w-10 h-10 rounded-full bg-violet-600/90 text-white flex items-center justify-center shadow-lg group-hover/yt:scale-110 transition-transform">
+                                      <Play size={16} className="fill-white ml-0.5" />
+                                    </div>
                                   </div>
+                                  <span className="absolute bottom-2 right-2 px-1.5 py-0.5 rounded bg-black/80 font-mono text-[10px] text-white">
+                                    {item.durationString}
+                                  </span>
+                                  <span className="absolute top-2 left-2 px-1.5 py-0.5 rounded bg-indigo-600/80 text-[9px] font-mono text-white opacity-0 group-hover/yt:opacity-100 transition-opacity">
+                                    Hover Preview
+                                  </span>
                                 </div>
-                                <span className="absolute bottom-2 right-2 px-1.5 py-0.5 rounded bg-black/80 font-mono text-[10px] text-white">
-                                  {item.durationString}
-                                </span>
-                                <span className="absolute top-2 left-2 px-1.5 py-0.5 rounded bg-indigo-600/80 text-[9px] font-mono text-white opacity-0 group-hover/yt:opacity-100 transition-opacity">
-                                  Hover Preview
-                                </span>
-                              </div>
-                            )}
-                            <div>
-                              <h4 className="font-bold text-xs text-white line-clamp-2">{item.title}</h4>
-                              <div className="flex items-center gap-2 text-[10px] text-slate-400 mt-1">
-                                <span className="text-cyan-400 font-medium">{item.channel}</span>
-                                <span>•</span>
-                                <span>{item.views}</span>
+                              )}
+                              <div>
+                                <h4 className="font-bold text-xs text-white line-clamp-2">{item.title}</h4>
+                                <div className="flex items-center gap-2 text-[10px] text-slate-400 mt-1">
+                                  <span className="text-cyan-400 font-medium">{item.channel}</span>
+                                  <span>•</span>
+                                  <span>{item.views}</span>
+                                </div>
                               </div>
                             </div>
-                          </div>
 
-                          <button
-                            onClick={() => handleIngestUrl(item.url)}
-                            disabled={isIngesting}
-                            className="w-full py-2 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white text-xs font-bold transition flex items-center justify-center gap-1.5"
-                          >
-                            <Download size={13} />
-                            <span>Import to Studio</span>
-                          </button>
-                        </div>
-                      ))}
-                    </div>
+                            <button
+                              onClick={() => handleIngestUrl(item.url)}
+                              disabled={isIngesting}
+                              className="w-full py-2 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white text-xs font-bold transition flex items-center justify-center gap-1.5"
+                            >
+                              <Download size={13} />
+                              <span>Import to Studio</span>
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Refresh for More Results Button */}
+                      <div className="pt-6 pb-8 flex flex-col items-center justify-center space-y-2">
+                        <button
+                          onClick={() => handleSearchYouTube(true)}
+                          disabled={isSearchingYt}
+                          className="px-6 py-2.5 rounded-xl bg-indigo-600/25 hover:bg-indigo-600/40 border border-indigo-500/40 text-cyan-300 font-bold text-xs flex items-center gap-2 shadow-lg hover:shadow-indigo-500/25 transition-all active:scale-95 group cursor-pointer"
+                        >
+                          <RefreshCw size={14} className={`text-cyan-400 group-hover:rotate-180 transition-transform ${isSearchingYt ? 'animate-spin' : ''}`} />
+                          <span>{isSearchingYt ? 'Parsing more results...' : 'Refresh for More Results'}</span>
+                        </button>
+                        <span className="text-[10px] font-mono text-slate-500">
+                          End of current stream • Click to parse and load additional YouTube video results
+                        </span>
+                      </div>
+                    </>
                   )}
                 </div>
               </div>

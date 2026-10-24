@@ -85,6 +85,32 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     }
   }, [isOpen, initialTab]);
 
+  useEffect(() => {
+    if (window.genuxNative?.getSettings) {
+      window.genuxNative.getSettings()
+        .then((s: any) => {
+          if (s) {
+            setSettings(prev => ({
+              ...prev,
+              storagePath: s.modelsDir || prev.storagePath,
+              exportPath: s.exportDir || prev.exportPath,
+              modelProfile: s.modelProfile || prev.modelProfile,
+              telemetryOptIn: !!s.telemetryOptIn
+            }));
+            if (s.appVersion) setAppVersion(`v${s.appVersion}`);
+          }
+        })
+        .catch((err: any) => {
+          console.warn('Could not read native settings:', err);
+        });
+    }
+    if (window.genuxNative?.getAppVersion) {
+      window.genuxNative.getAppVersion().then((v: string) => {
+        if (v) setAppVersion(`v${v}`);
+      });
+    }
+  }, []);
+
   if (!isOpen) return null;
 
   const handleSave = () => {
@@ -114,32 +140,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       onClose();
     }, 300);
   };
-
-  useEffect(() => {
-    if (window.genuxNative?.getSettings) {
-      window.genuxNative.getSettings()
-        .then((s: any) => {
-          if (s) {
-            setSettings(prev => ({
-              ...prev,
-              storagePath: s.modelsDir || prev.storagePath,
-              exportPath: s.exportDir || prev.exportPath,
-              modelProfile: s.modelProfile || prev.modelProfile,
-              telemetryOptIn: !!s.telemetryOptIn
-            }));
-            if (s.appVersion) setAppVersion(`v${s.appVersion}`);
-          }
-        })
-        .catch((err: any) => {
-          console.warn('Could not read native settings:', err);
-        });
-    }
-    if (window.genuxNative?.getAppVersion) {
-      window.genuxNative.getAppVersion().then((v: string) => {
-        if (v) setAppVersion(`v${v}`);
-      });
-    }
-  }, []);
 
   const handleBrowseStorageFolder = async () => {
     if (window.genuxNative?.selectDirectory) {

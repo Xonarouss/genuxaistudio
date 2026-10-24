@@ -123,6 +123,12 @@ export const Footer: React.FC<FooterProps> = ({
                   Download Installer (.exe)
                 </button>
               </li>
+              <li className="flex items-center gap-1.5 text-slate-400 select-none text-xs">
+                <span>Android App</span>
+                <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-slate-100 text-slate-500 uppercase tracking-wider">
+                  Coming soon
+                </span>
+              </li>
             </ul>
           </div>
 
