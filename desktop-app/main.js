@@ -1152,10 +1152,70 @@ ipcMain.handle('social:searchYouTube', async (_, query) => {
 
 // -------------------------------------------------------------------
 // IPC Handlers: C++ Engine Pipeline Execution
+// YuE2-style hybrid: Python (real AI) → C++ (orchestrate) → JS (fallback)
 // -------------------------------------------------------------------
+
+/** Find the Python executable (python3 > python > py) */
+function findPythonExe() {
+  for (const cmd of ['python3', 'python', 'py']) {
+    try {
+      const r = require('child_process').spawnSync(cmd, ['--version'], { timeout: 3000 });
+      if (r.status === 0) return cmd;
+    } catch {}
+  }
+  return null;
+}
+
+/** Shared JSON-line progress parser — used by both C++ and Python runners */
+function attachProgressParser(proc, win, onClose) {
+  let lineBuffer = '';
+
+  proc.stdout.on('data', (data) => {
+    lineBuffer += data.toString();
+    const lines = lineBuffer.split('\n');
+    lineBuffer = lines.pop();
+    for (const line of lines) {
+      if (!line.trim()) continue;
+      try {
+        const p = JSON.parse(line);
+        if (!win) continue;
+        if (p.type === 'progress') {
+          const vram = p.vram_mb != null
+            ? `${(p.vram_mb / 1024).toFixed(1)} GB`
+            : (p.vram_gb != null ? `${p.vram_gb.toFixed(1)} GB` : '?');
+          win.webContents.send('pipeline:progress',
+            `[${p.stage}] ${p.message} (${p.progress}% | VRAM: ${vram} | ${p.fps?.toFixed(0) ?? '?'} FPS)`);
+        } else if (p.type === 'log') {
+          win.webContents.send('pipeline:progress', `[Engine] ${p.message}`);
+        } else if (p.type === 'result') {
+          win.webContents.send('pipeline:progress',
+            `[Done] Output: ${p.output_path} in ${p.duration_s}s`);
+          win.webContents.send('pipeline:result', p);
+        } else if (p.type === 'error') {
+          console.error('[Engine Error]', p.message);
+          win.webContents.send('pipeline:progress', `[ERROR] ${p.message}`);
+        }
+      } catch {
+        if (win && line.trim()) win.webContents.send('pipeline:progress', line);
+      }
+    }
+  });
+
+  proc.stderr.on('data', (data) => {
+    const txt = data.toString().trim();
+    if (txt && win) win.webContents.send('pipeline:progress', `[stderr] ${txt}`);
+  });
+
+  proc.on('close', onClose);
+  proc.on('error', (err) => {
+    if (win) win.webContents.send('pipeline:progress', `[Engine Error] ${err.message}`);
+    onClose(-1);
+  });
+}
+
 ipcMain.handle('engine:startRecastJob', async (_, jobConfig) => {
   return new Promise((resolve, reject) => {
-    // Search for engine binary in expected locations
+    // ── Locate binaries ──────────────────────────────────────
     const engineCandidates = [
       path.join(__dirname, '..', 'engine-cpp', 'build', 'GenuxEngine.exe'),
       path.join(__dirname, '..', 'bin', 'GenuxEngine.exe'),
@@ -1168,7 +1228,7 @@ ipcMain.handle('engine:startRecastJob', async (_, jobConfig) => {
       mainWindow.webContents.send('pipeline:progress',
         engineExe
           ? `[C++ Engine] Launching native binary: ${path.basename(engineExe)}`
-          : '[C++ Engine] Native binary not found — running JS-accelerated fallback pipeline.'
+          : '[Engine] Searching for Python inference worker...'
       );
     }
 
@@ -1208,65 +1268,57 @@ ipcMain.handle('engine:startRecastJob', async (_, jobConfig) => {
       }
     };
 
-    const jobJson = JSON.stringify(enrichedConfig);
+    const send = (msg) => { if (mainWindow) mainWindow.webContents.send('pipeline:progress', msg); };
 
-    if (!engineExe) {
-      // No binary: run an accelerated JS pipeline that actually uses available models via child Python processes
-      return runJsFallbackPipeline(enrichedConfig, mainWindow).then(resolve).catch(reject);
+    // ── TIER 1: Python real inference worker ─────────────────
+    // Runs SAM 2.1, DWPose ONNX, Wan 2.1 diffusers, RIFE + NVENC
+    const pythonScript = path.join(__dirname, '..', 'engine-cpp', 'python', 'genux_infer.py');
+    const pythonExe = findPythonExe();
+
+    if (pythonExe && fs.existsSync(pythonScript)) {
+      const os = require('os');
+      const tmpCfg = path.join(os.tmpdir(), `genux_job_${Date.now()}.json`);
+      fs.writeFileSync(tmpCfg, JSON.stringify(enrichedConfig));
+
+      send(`[Python AI Engine] Launching genux_infer.py (${pythonExe})`);
+      send(`[Python AI Engine] Available models: ${JSON.stringify(enrichedConfig.availableModels)}`);
+
+      activeEngineChild = spawn(pythonExe, [pythonScript, tmpCfg], {
+        cwd: path.dirname(pythonScript),
+        stdio: ['ignore', 'pipe', 'pipe']
+      });
+
+      attachProgressParser(activeEngineChild, mainWindow, (code) => {
+        try { fs.unlinkSync(tmpCfg); } catch {}
+        activeEngineChild = null;
+        resolve({ success: code === 0, exitCode: code });
+      });
+      return;
     }
 
-    activeEngineChild = spawn(engineExe, ['--job-stdin'], {
-      cwd: path.dirname(engineExe),
-      stdio: ['pipe', 'pipe', 'pipe']
-    });
+    // ── TIER 2: C++ engine (orchestrator + JSON progress) ────
+    if (engineExe) {
+      send(`[C++ Engine] Python not found — launching native orchestrator.`);
+      const jobJson = JSON.stringify(enrichedConfig);
+      activeEngineChild = spawn(engineExe, ['--job-stdin'], {
+        cwd: path.dirname(engineExe),
+        stdio: ['pipe', 'pipe', 'pipe']
+      });
+      activeEngineChild.stdin.write(jobJson + '\n');
+      activeEngineChild.stdin.end();
+      attachProgressParser(activeEngineChild, mainWindow, (code) => {
+        activeEngineChild = null;
+        resolve({ success: code === 0, exitCode: code });
+      });
+      return;
+    }
 
-    // Write job config JSON to engine stdin, then close
-    activeEngineChild.stdin.write(jobJson + '\n');
-    activeEngineChild.stdin.end();
-
-    let lineBuffer = '';
-    activeEngineChild.stdout.on('data', (data) => {
-      lineBuffer += data.toString();
-      const lines = lineBuffer.split('\n');
-      lineBuffer = lines.pop(); // keep incomplete last line
-      for (const line of lines) {
-        if (!line.trim()) continue;
-        // Try to parse structured JSON progress from engine
-        try {
-          const parsed = JSON.parse(line);
-          if (parsed.type === 'progress' && mainWindow) {
-            mainWindow.webContents.send('pipeline:progress',
-              `[${parsed.stage}] ${parsed.message} (${parsed.progress}% | VRAM: ${parsed.vram_gb?.toFixed(1) || '?'} GB | ${parsed.fps?.toFixed(0) || '?'} FPS)`);
-          } else if (parsed.type === 'log' && mainWindow) {
-            mainWindow.webContents.send('pipeline:progress', `[C++ Engine] ${parsed.message}`);
-          } else if (parsed.type === 'error') {
-            console.error('[Engine Error]', parsed.message);
-            if (mainWindow) mainWindow.webContents.send('pipeline:progress', `[ERROR] ${parsed.message}`);
-          }
-        } catch {
-          // Non-JSON line — pass through as raw log
-          if (mainWindow) mainWindow.webContents.send('pipeline:progress', line);
-        }
-      }
-    });
-
-    activeEngineChild.stderr.on('data', (data) => {
-      const txt = data.toString().trim();
-      if (txt && mainWindow) mainWindow.webContents.send('pipeline:progress', `[Engine] ${txt}`);
-    });
-
-    activeEngineChild.on('close', (code) => {
-      activeEngineChild = null;
-      resolve({ success: code === 0, exitCode: code });
-    });
-
-    activeEngineChild.on('error', (err) => {
-      activeEngineChild = null;
-      // Fallback to JS pipeline on spawn failure
-      runJsFallbackPipeline(enrichedConfig, mainWindow).then(resolve).catch(reject);
-    });
+    // ── TIER 3: JS fallback ───────────────────────────────────
+    send('[JS Pipeline] Python and C++ engine not found — running JS-accelerated fallback.');
+    runJsFallbackPipeline(enrichedConfig, mainWindow).then(resolve).catch(reject);
   });
 });
+
 
 // ---------------------------------------------------------------------------
 // JS Accelerated Fallback Pipeline (runs when C++ binary not present)

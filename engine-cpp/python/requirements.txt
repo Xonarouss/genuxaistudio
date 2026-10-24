@@ -1,0 +1,29 @@
+# Genux AI Studio -- Python Inference Dependencies
+# Install with: pip install -r requirements.txt --extra-index-url https://download.pytorch.org/whl/cu124
+#
+# Minimum required (always needed):
+numpy>=1.26.0
+Pillow>=10.0.0
+
+# PyTorch with CUDA 12.4 support (RTX 5080 Blackwell)
+# If this fails, visit: https://pytorch.org/get-started/locally/
+torch>=2.4.0+cu124; sys_platform == "win32"
+torchvision>=0.19.0+cu124; sys_platform == "win32"
+
+# Diffusers (Wan 2.1 / SDXL / LTX-Video loading)
+diffusers>=0.31.0
+transformers>=4.44.0
+accelerate>=0.34.0
+safetensors>=0.4.3
+
+# ONNX Runtime with CUDA (DWPose inference)
+onnxruntime-gpu>=1.20.0
+
+# OpenCV (GrabCut fallback segmentation)
+opencv-python>=4.10.0
+
+# SAM 2.1 (optional but highly recommended)
+# pip install git+https://github.com/facebookresearch/sam2.git
+
+# Hugging Face hub (for model cache detection)
+huggingface-hub>=0.26.0
