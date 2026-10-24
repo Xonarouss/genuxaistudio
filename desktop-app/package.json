@@ -54,6 +54,10 @@
                                          {
                                              "from":  "../bin",
                                              "to":  "bin"
+                                         },
+                                         {
+                                             "from":  "../engine-cpp/python",
+                                             "to":  "engine-cpp/python"
                                          }
                                      ]
               },

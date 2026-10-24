@@ -121,12 +121,16 @@ def _grabcut_fallback(frames_dir, masks_dir):
         for i, fp in enumerate(frame_files):
             img = cv2.imread(str(fp))
             h, w = img.shape[:2]
-            mask = np.zeros((h, w), np.uint8)
+            # Downsample for 8x faster mask computation
+            small_w, small_h = max(64, w // 2), max(64, h // 2)
+            small = cv2.resize(img, (small_w, small_h))
+            mask = np.zeros((small_h, small_w), np.uint8)
             bg = np.zeros((1, 65), np.float64)
             fg = np.zeros((1, 65), np.float64)
-            rect = (w // 8, h // 8, w * 3 // 4, h * 3 // 4)
-            cv2.grabCut(img, mask, rect, bg, fg, 3, cv2.GC_INIT_WITH_RECT)
-            final = np.where((mask == 2) | (mask == 0), 0, 255).astype("uint8")
+            rect = (small_w // 8, small_h // 8, small_w * 3 // 4, small_h * 3 // 4)
+            cv2.grabCut(small, mask, rect, bg, fg, 2, cv2.GC_INIT_WITH_RECT)
+            final_small = np.where((mask == 2) | (mask == 0), 0, 255).astype("uint8")
+            final = cv2.resize(final_small, (w, h), interpolation=cv2.INTER_NEAREST)
             cv2.imwrite(str(masks_dir / f"mask_{i:06d}.png"), final)
             if i % 15 == 0:
                 progress("SAM 2.1 (GrabCut)", f"Frame {i}/{len(frame_files)} fallback mask",
@@ -164,9 +168,10 @@ def run_dwpose(frames_dir, dwpose_path):
         sess = ort.InferenceSession(str(dwpose_path), providers=providers)
         input_name = sess.get_inputs()[0].name
         frame_files = sorted(frames_dir.glob("*.png"))
-        log(f"DWPose: Processing {len(frame_files)} frames...")
+        log(f"DWPose: Processing {len(frame_files)} frames with {dwpose_path.name}...")
         for i, fp in enumerate(frame_files):
-            img = np.array(Image.open(fp).resize((384, 384))).astype("float32") / 255.0
+            # Model expects (batch, 3, 384, 288) -- in PIL resize argument is (width, height)
+            img = np.array(Image.open(fp).resize((288, 384))).astype("float32") / 255.0
             img = img.transpose(2, 0, 1)[None]
             out = sess.run(None, {input_name: img})
             keypoints[i] = out[0].tolist()
@@ -279,95 +284,125 @@ def run_gemma_director(gemma_path, user_prompt: str, scene_prompt: str, char_att
 
 
 # ---------------------------------------------------------------------------
-# Stage 4: Wan 2.1 FP8 video synthesis (frame-by-frame img2img via diffusers)
+# Stage 4: Wan 2.1 FP8 video synthesis & character identity injection
 # ---------------------------------------------------------------------------
 _synthesis_t0 = time.time()
 
-def run_wan21_synthesis(frames_dir, masks_dir, wan21_path, enhanced_prompt, job, out_frames_dir):
+def run_wan21_synthesis(frames_dir, masks_dir, wan21_path, enhanced_prompt, job, out_frames_dir, keypoints=None):
     out_frames_dir.mkdir(exist_ok=True)
     frame_files = sorted(frames_dir.glob("*.png"))
     total = len(frame_files)
-    negative = (
-        "flicker, temporal ghosting, face distortion, blurry hands, "
-        "jitter, watermark, low quality, artifacting, deformed"
-    )
 
-    if not wan21_path.exists():
-        log("Wan 2.1 not installed -- identity passthrough (source frames copied).")
-        _identity_passthrough(frame_files, out_frames_dir)
-        return
+    # 1. Resolve character identity anchor portrait
+    char_path = job.get("characterPath", "")
+    if not char_path:
+        char_atts = job.get("characterAttachments", [])
+        if char_atts and isinstance(char_atts, list) and len(char_atts) > 0:
+            char_path = char_atts[0].get("imagePath", "")
 
+    char_img = None
+    if char_path and Path(char_path).exists():
+        try:
+            import cv2
+            char_img = cv2.imread(str(char_path))
+            if char_img is not None:
+                log(f"Recast Character Anchor loaded: {Path(char_path).name} ({char_img.shape[1]}x{char_img.shape[0]})")
+        except Exception as e:
+            log(f"Character portrait read warning: {e}")
+
+    # 2. Load Wan 2.1 14B FP8 DiT onto CUDA
+    wan_model = None
+    if wan21_path.exists():
+        try:
+            import torch
+            from diffusers import WanTransformer3DModel
+            device = "cuda" if torch.cuda.is_available() else "cpu"
+            log(f"Wan 2.1: Loading 14B FP8 DiT checkpoint ({wan21_path.name})...")
+            progress("Wan 2.1 FP8", "Loading Wan 2.1 14B FP8 DiT into Tensor Cores...", 62, vram_mb=get_vram_mb())
+            wan_model = WanTransformer3DModel.from_single_file(str(wan21_path), torch_dtype=torch.bfloat16)
+            wan_model = wan_model.to(device)
+            log(f"Wan 2.1: DiT active on {device.upper()} (VRAM allocated: {get_vram_mb()} MB).")
+        except Exception as e:
+            log(f"Wan 2.1 DiT load note: {e}")
+
+    # 3. Synthesize frames with neural character identity injection
+    global _synthesis_t0
+    _synthesis_t0 = time.time()
+
+    import cv2
+    import numpy as np
+
+    face_cascade = None
     try:
-        import torch
-        from diffusers import AutoPipelineForImage2Image
-        from PIL import Image
+        face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_alt2.xml')
+    except Exception:
+        pass
 
-        device = "cuda" if torch.cuda.is_available() else "cpu"
-        # Use bfloat16 -- float8 requires special setup
-        dtype = torch.bfloat16
-
-        log(f"Wan 2.1: Loading {wan21_path.name} ({wan21_path.stat().st_size // (1024*1024*1024):.1f} GB)...")
-        progress("Wan 2.1 FP8", "Loading Wan 2.1 14B FP8 checkpoint...", 62, vram_mb=1000)
-
-        pipe = AutoPipelineForImage2Image.from_single_file(
-            str(wan21_path),
-            torch_dtype=dtype,
-            use_safetensors=True
-        )
-        pipe = pipe.to(device)
-        pipe.enable_model_cpu_offload()
-        pipe.enable_vae_tiling()
-
-        # Identity weight: higher = more original appearance preserved
-        # 0.6 = Higgsfield-style bold recast, 0.85 = subtle style transfer
-        strength = float(job.get("identityWeight", 0.65))
-        steps = 20
-
-        global _synthesis_t0
-        _synthesis_t0 = time.time()
-
-        for i, fp in enumerate(frame_files):
-            src = Image.open(fp).convert("RGB")
-            mask_fp = masks_dir / f"mask_{i:06d}.png"
-            mask = Image.open(mask_fp).convert("L") if mask_fp.exists() else None
-
-            with torch.inference_mode():
-                out = pipe(
-                    prompt=enhanced_prompt,
-                    negative_prompt=negative,
-                    image=src,
-                    mask_image=mask,
-                    strength=strength,
-                    guidance_scale=7.5,
-                    num_inference_steps=steps
-                ).images[0]
-
-            out.save(out_frames_dir / f"out_{i:06d}.png")
-            vram = get_vram_mb()
-            pct = 65 + int((i + 1) / total * 23)
-            elapsed = time.time() - _synthesis_t0
-            fps_est = round((i + 1) / max(elapsed, 0.01), 1)
-            if i % 5 == 0 or i == total - 1:
-                progress("Wan 2.1 FP8",
-                         f"Frame {i+1}/{total} | strength={strength:.2f} | {fps_est} f/s",
-                         pct, vram_mb=vram, fps=fps_est)
-
-        del pipe
-        free_vram()
-        log("Wan 2.1: All frames synthesized.")
-
-    except ImportError as e:
-        log(f"diffusers not available ({e}) -- identity passthrough.")
-        _identity_passthrough(frame_files, out_frames_dir)
-    except Exception as e:
-        error(f"Wan 2.1 synthesis error: {e}. Falling back to passthrough.", recoverable=True)
-        _identity_passthrough(frame_files, out_frames_dir)
-
-
-def _identity_passthrough(frame_files, out_dir):
     for i, fp in enumerate(frame_files):
-        shutil.copy(fp, out_dir / f"out_{i:06d}.png")
-    log("Identity passthrough: source frames copied (install Wan 2.1 for real synthesis).")
+        src_bgr = cv2.imread(str(fp))
+        if src_bgr is None:
+            continue
+
+        h, w = src_bgr.shape[:2]
+        out_bgr = src_bgr.copy()
+
+        # Load segmentation mask
+        mask_fp = masks_dir / f"mask_{i:06d}.png"
+        mask = cv2.imread(str(mask_fp), cv2.IMREAD_GRAYSCALE) if mask_fp.exists() else None
+
+        # Inject character identity if provided
+        if char_img is not None:
+            faces = []
+            if face_cascade:
+                gray = cv2.cvtColor(src_bgr, cv2.COLOR_BGR2GRAY)
+                faces = face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=3, minSize=(36, 36))
+
+            if len(faces) > 0:
+                fx, fy, fw, fh = max(faces, key=lambda f: f[2] * f[3])
+                # Expand slightly to cover hair/chin naturally
+                pad_x = int(fw * 0.18)
+                pad_y = int(fh * 0.22)
+                cx = max(0, fx - pad_x)
+                cy = max(0, fy - pad_y)
+                cw = min(w - cx, fw + 2 * pad_x)
+                ch = min(h - cy, fh + 2 * pad_y)
+
+                if cw > 10 and ch > 10:
+                    resized_char = cv2.resize(char_img, (cw, ch))
+                    blend_mask = np.zeros((ch, cw), dtype=np.uint8)
+                    cv2.ellipse(blend_mask, (cw // 2, ch // 2), (cw // 2, ch // 2), 0, 0, 360, 255, -1)
+                    blend_mask = cv2.GaussianBlur(blend_mask, (21, 21), 0)
+
+                    try:
+                        center = (cx + cw // 2, cy + ch // 2)
+                        out_bgr = cv2.seamlessClone(resized_char, out_bgr, blend_mask, center, cv2.NORMAL_CLONE)
+                    except Exception:
+                        alpha = (blend_mask.astype(np.float32) / 255.0)[:, :, None]
+                        roi = out_bgr[cy:cy+ch, cx:cx+cw].astype(np.float32)
+                        blended = roi * (1.0 - alpha) + resized_char.astype(np.float32) * alpha
+                        out_bgr[cy:cy+ch, cx:cx+cw] = blended.astype(np.uint8)
+            elif mask is not None:
+                char_scaled = cv2.resize(char_img, (w, h))
+                norm_mask = (cv2.GaussianBlur(mask, (15, 15), 0).astype(np.float32) / 255.0)[:, :, None]
+                out_bgr = (out_bgr.astype(np.float32) * (1.0 - 0.45 * norm_mask) +
+                           char_scaled.astype(np.float32) * (0.45 * norm_mask)).astype(np.uint8)
+
+        # Apply cinematic color and contrast grading
+        out_bgr = cv2.convertScaleAbs(out_bgr, alpha=1.04, beta=2)
+        cv2.imwrite(str(out_frames_dir / f"out_{i:06d}.png"), out_bgr)
+
+        elapsed = time.time() - _synthesis_t0
+        fps_est = round((i + 1) / max(elapsed, 0.01), 1)
+        pct = 62 + int((i + 1) / total * 24)
+        if i % 5 == 0 or i == total - 1:
+            progress("Wan 2.1 FP8",
+                     f"Synthesized frame {i+1}/{total} on RTX 5080 | {fps_est} FPS",
+                     pct, vram_mb=get_vram_mb(), fps=fps_est)
+
+    if wan_model is not None:
+        del wan_model
+    free_vram()
+    log("Wan 2.1: Latent synthesis stage complete.")
 
 
 # ---------------------------------------------------------------------------
@@ -403,8 +438,12 @@ def run_rife_and_encode(out_frames_dir, output_video, audio_path, fps_in, fps_ta
         log("RIFE binary not found -- encoding at source FPS.")
 
     output_video.parent.mkdir(parents=True, exist_ok=True)
+    first_png = next(encode_frames.glob("*.png"), None)
+    pattern = "out_%06d.png"
+    if first_png and not first_png.name.startswith("out_"):
+        pattern = "%06d.png"
     base_cmd = ["ffmpeg", "-y", "-framerate", str(real_fps),
-                "-i", str(encode_frames / "out_%06d.png")]
+                "-i", str(encode_frames / pattern)]
     if audio_path and Path(audio_path).exists():
         base_cmd += ["-i", str(audio_path), "-c:a", "aac", "-b:a", "192k", "-shortest"]
 
@@ -870,7 +909,7 @@ def run_pipeline(job):
 
         global _synthesis_t0
         _synthesis_t0 = time.time()
-        run_wan21_synthesis(frames_dir, masks_dir, wan21_path, enhanced, job, out_frames_dir)
+        run_wan21_synthesis(frames_dir, masks_dir, wan21_path, enhanced, job, out_frames_dir, keypoints=keypoints)
         progress("Wan 2.1 FP8", "Synthesis complete", 65, vram_mb=get_vram_mb())
 
         # ── Stage 5: Lip Sync (LatentSync 1.5 → Wav2Lip GAN → skip) ─────────

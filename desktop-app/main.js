@@ -1307,8 +1307,18 @@ function findPythonExe() {
   const embedded = getEmbeddedPythonExe();
   if (fs.existsSync(embedded)) return embedded;
 
-  // 2. Fallback: system Python (may not exist on fresh machines)
-  for (const cmd of ['python3', 'python', 'py']) {
+  // 2. Specific standard Windows Python 3.11 install locations (with CUDA PyTorch)
+  const specificPaths = [
+    'C:\\Users\\chris\\AppData\\Local\\Programs\\Python\\Python311\\python.exe',
+    path.join(process.env.LOCALAPPDATA || '', 'Programs', 'Python', 'Python311', 'python.exe'),
+    path.join(process.env.PROGRAMFILES || '', 'Python311', 'python.exe')
+  ];
+  for (const sp of specificPaths) {
+    if (fs.existsSync(sp)) return sp;
+  }
+
+  // 3. Fallback: system Python (prioritize 'python' which is 3.11 with CUDA over 'python3' which is CPU)
+  for (const cmd of ['python', 'py', 'python3']) {
     try {
       const r = require('child_process').spawnSync(cmd, ['--version'], { timeout: 3000 });
       if (r.status === 0) return cmd;
@@ -1479,7 +1489,52 @@ function attachProgressParser(proc, win, onClose) {
   });
 }
 
+/** Pre-cache remote videos (e.g. sample templates) to local disk so Python can process frames */
+async function ensureLocalVideoFile(videoUrlOrPath, sendProgress) {
+  if (!videoUrlOrPath) return '';
+  if (!videoUrlOrPath.startsWith('http://') && !videoUrlOrPath.startsWith('https://')) {
+    return videoUrlOrPath;
+  }
+  fs.mkdirSync(VIDEOS_CACHE_DIR, { recursive: true });
+  try {
+    const parsed = new URL(videoUrlOrPath);
+    const ext = path.extname(parsed.pathname) || '.mp4';
+    const base = path.basename(parsed.pathname, ext) || 'video';
+    const dest = path.join(VIDEOS_CACHE_DIR, `cached_${base}_${Date.now()}${ext}`);
+
+    if (sendProgress) sendProgress(`[Ingest] Pre-caching remote video to local workspace...`);
+
+    await new Promise((resolve, reject) => {
+      function dl(url, redirects = 5) {
+        const mod = url.startsWith('https') ? https : http;
+        mod.get(url, (res) => {
+          if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+            return redirects > 0 ? dl(res.headers.location, redirects - 1) : reject(new Error('Redirect loop'));
+          }
+          const file = fs.createWriteStream(dest);
+          res.pipe(file);
+          file.on('finish', () => file.close(resolve));
+          file.on('error', reject);
+        }).on('error', reject);
+      }
+      dl(videoUrlOrPath);
+    });
+    return dest;
+  } catch (err) {
+    console.error('[ensureLocalVideoFile] Download failed:', err);
+    return videoUrlOrPath;
+  }
+}
+
 ipcMain.handle('engine:startRecastJob', async (_, jobConfig) => {
+  const send = (msg) => { if (mainWindow) mainWindow.webContents.send('pipeline:progress', msg); };
+
+  // Pre-cache remote source video if needed
+  let sourceVideo = jobConfig.sourceVideoPath || '';
+  if (sourceVideo.startsWith('http://') || sourceVideo.startsWith('https://')) {
+    sourceVideo = await ensureLocalVideoFile(sourceVideo, send);
+  }
+
   return new Promise((resolve, reject) => {
     // ── Locate binaries ──────────────────────────────────────
     const engineCandidates = [
@@ -1490,18 +1545,10 @@ ipcMain.handle('engine:startRecastJob', async (_, jobConfig) => {
     ];
     let engineExe = engineCandidates.find(p => fs.existsSync(p)) || null;
 
-    if (mainWindow) {
-      mainWindow.webContents.send('pipeline:progress',
-        engineExe
-          ? `[C++ Engine] Launching native binary: ${path.basename(engineExe)}`
-          : '[Engine] Searching for Python inference worker...'
-      );
-    }
-
     // Build enriched job config with all model paths resolved
     const modelsDir = getEffectiveModelsDir();
     const enrichedConfig = {
-      sourceVideoPath:   jobConfig.sourceVideoPath || '',
+      sourceVideoPath:   sourceVideo,
       characterPath:     jobConfig.characterPath || '',
       userPrompt:        jobConfig.userPrompt || '',
       scenePrompt:       jobConfig.scenePrompt || '',
@@ -1541,21 +1588,24 @@ ipcMain.handle('engine:startRecastJob', async (_, jobConfig) => {
       }
     };
 
-
-    const send = (msg) => { if (mainWindow) mainWindow.webContents.send('pipeline:progress', msg); };
-
     // ── TIER 1: Python real inference worker ─────────────────
-    // Runs SAM 2.1, DWPose ONNX, Wan 2.1 diffusers, RIFE + NVENC
-    const pythonScript = path.join(__dirname, '..', 'engine-cpp', 'python', 'genux_infer.py');
+    // Multi-candidate path resolution for dev and packaged builds
+    const scriptCandidates = [
+      path.join(__dirname, '..', 'engine-cpp', 'python', 'genux_infer.py'),
+      path.join(process.resourcesPath || '', 'engine-cpp', 'python', 'genux_infer.py'),
+      path.join(__dirname, 'engine-cpp', 'python', 'genux_infer.py'),
+      path.join(app.getAppPath(), '..', 'engine-cpp', 'python', 'genux_infer.py')
+    ];
+    const pythonScript = scriptCandidates.find(p => fs.existsSync(p)) || null;
     const pythonExe = findPythonExe();
 
-    if (pythonExe && fs.existsSync(pythonScript)) {
+    if (pythonExe && pythonScript) {
       const os = require('os');
       const tmpCfg = path.join(os.tmpdir(), `genux_job_${Date.now()}.json`);
       fs.writeFileSync(tmpCfg, JSON.stringify(enrichedConfig));
 
       send(`[Python AI Engine] Launching genux_infer.py (${pythonExe})`);
-      send(`[Python AI Engine] Available models: ${JSON.stringify(enrichedConfig.availableModels)}`);
+      send(`[Python AI Engine] Active models: ${Object.entries(enrichedConfig.availableModels).filter(([, v]) => v).map(([k]) => k).join(', ')}`);
 
       activeEngineChild = spawn(pythonExe, [pythonScript, tmpCfg], {
         cwd: path.dirname(pythonScript),
