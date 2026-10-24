@@ -92,15 +92,17 @@ jobs:
       - name: Build Electron NSIS installer
         shell: pwsh
         run: |
-          # electron-builder bundles NSIS internally — no choco needed
           npx --yes electron-builder --win nsis --publish never --x64
         working-directory: desktop-app
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # NOTE: GH_TOKEN must NOT be set here — it causes electron-builder to
+          # auto-detect GitHub publish config and try to push mid-build (fails).
+          # Publishing is handled by the separate softprops/action-gh-release step.
           CSC_IDENTITY_AUTO_DISCOVERY: false
           WIN_CSC_LINK: ""
           WIN_CSC_KEY_PASSWORD: ""
-          DEBUG: electron-builder
+          USE_HARD_LINKS: false
+          DEBUG: "electron-builder"
 
       # ── Find installer ────────────────────────────────────────────────────────
       - name: Locate installer artifact
