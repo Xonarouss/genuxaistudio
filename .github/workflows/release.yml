@@ -3,16 +3,16 @@ name: Build & Publish Windows Installer
 on:
   push:
     tags:
-      - 'v*'            # Triggers on any tag like v1.0.5, v2.0.0
-  workflow_dispatch:    # Allow manual trigger from GitHub UI
+      - 'v*'
+  workflow_dispatch:
     inputs:
       version:
-        description: 'Version to release (e.g. 1.0.5)'
+        description: 'Version to release (e.g. 1.0.7)'
         required: true
-        default: '1.0.5'
+        default: '1.0.7'
 
 permissions:
-  contents: write       # Required to create GitHub Releases
+  contents: write
 
 jobs:
   build-windows:
@@ -20,21 +20,15 @@ jobs:
     runs-on: windows-latest
 
     steps:
-      # ── Checkout ────────────────────────────────────────────────────────────
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # ── Node.js setup ────────────────────────────────────────────────────────
       - name: Setup Node.js 20
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'npm'
-          cache-dependency-path: |
-            web-portal/package-lock.json
-            desktop-app/package-lock.json
 
-      # ── Build web-portal UI (embeds into Electron app) ──────────────────────
+      # ── Build web-portal ──────────────────────────────────────────────────────
       - name: Install web-portal dependencies
         run: npm ci
         working-directory: web-portal
@@ -43,66 +37,95 @@ jobs:
         run: npm run build
         working-directory: web-portal
 
-      # ── Copy built UI into desktop-app/dist-ui ───────────────────────────────
+      # ── Copy built UI into desktop-app/dist-ui ────────────────────────────────
       - name: Copy web-portal dist → desktop-app/dist-ui
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Force -Path "desktop-app/dist-ui"
-          Copy-Item -Recurse -Force "web-portal/dist/*" "desktop-app/dist-ui/"
+          New-Item -ItemType Directory -Force -Path "desktop-app\dist-ui"
+          Copy-Item -Recurse -Force "web-portal\dist\*" "desktop-app\dist-ui\"
+          Write-Host "dist-ui contents:"
+          Get-ChildItem "desktop-app\dist-ui" | ForEach-Object { Write-Host " $($_.Name)" }
 
       # ── Install desktop-app deps ──────────────────────────────────────────────
       - name: Install desktop-app dependencies
         run: npm ci
         working-directory: desktop-app
 
-      # ── Resolve version ───────────────────────────────────────────────────────
-      - name: Set version from tag or input
+      # ── Set version ───────────────────────────────────────────────────────────
+      - name: Resolve release version
+        id: version
         shell: pwsh
         run: |
-          $ver = if ("${{ github.ref_type }}" -eq "tag") {
-            "${{ github.ref_name }}" -replace "^v", ""
+          if ("${{ github.ref_type }}" -eq "tag") {
+            $ver = "${{ github.ref_name }}" -replace "^v", ""
           } else {
-            "${{ github.event.inputs.version }}"
+            $ver = "${{ github.event.inputs.version }}"
           }
+          Write-Host "Building version: $ver"
           echo "RELEASE_VERSION=$ver" >> $env:GITHUB_ENV
-          npm version $ver --no-git-tag-version
+          npm version $ver --no-git-tag-version --allow-same-version
         working-directory: desktop-app
 
-      # ── Install NSIS (required by electron-builder on Windows CI) ────────────
-      - name: Install NSIS via Chocolatey
-        shell: pwsh
-        run: choco install nsis -y --no-progress
-
-      # ── Debug: confirm dist-ui is in place ────────────────────────────────────
-      - name: Confirm dist-ui contents
+      # ── Ensure README.txt exists (required by installer.nsh) ─────────────────
+      - name: Ensure required build assets exist
         shell: pwsh
         run: |
-          Write-Host "dist-ui files:"
-          Get-ChildItem "desktop-app/dist-ui" -Recurse | Select-Object -First 10 | ForEach-Object { Write-Host $_.FullName }
+          # Create README.txt if missing (referenced by installer.nsh finish page)
+          if (-not (Test-Path "desktop-app\README.txt")) {
+            "Genux AI Studio - AI Video Recast Engine" | Out-File "desktop-app\README.txt" -Encoding utf8
+            Write-Host "Created README.txt"
+          }
+          # Verify icon exists
+          if (Test-Path "desktop-app\build\icon.ico") {
+            Write-Host "icon.ico found OK"
+          } else {
+            Write-Host "WARNING: icon.ico missing"
+          }
+          # Verify installer.nsh exists
+          if (Test-Path "desktop-app\build\installer.nsh") {
+            Write-Host "installer.nsh found OK"
+          } else {
+            Write-Host "WARNING: installer.nsh missing"
+          }
 
       # ── Build NSIS installer ──────────────────────────────────────────────────
       - name: Build Electron NSIS installer
-        run: npx electron-builder --win nsis --publish never
+        shell: pwsh
+        run: |
+          # electron-builder bundles NSIS internally — no choco needed
+          npx --yes electron-builder --win nsis --publish never --x64
         working-directory: desktop-app
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Disable code signing — no certificate available in CI
           CSC_IDENTITY_AUTO_DISCOVERY: false
           WIN_CSC_LINK: ""
           WIN_CSC_KEY_PASSWORD: ""
+          DEBUG: electron-builder
 
-      # ── Find installer artifact ───────────────────────────────────────────────
-      - name: Find installer file
-        id: find-installer
+      # ── Find installer ────────────────────────────────────────────────────────
+      - name: Locate installer artifact
         shell: pwsh
         run: |
-          $installer = Get-ChildItem "desktop-app/dist-package" -Filter "Genux_AI_Setup_*.exe" | Select-Object -First 1
-          echo "INSTALLER_PATH=$($installer.FullName)" >> $env:GITHUB_ENV
-          echo "INSTALLER_NAME=$($installer.Name)" >> $env:GITHUB_ENV
-          echo "Found: $($installer.FullName)"
+          Write-Host "Contents of dist-package:"
+          Get-ChildItem "desktop-app\dist-package" -ErrorAction SilentlyContinue | ForEach-Object {
+            Write-Host " $($_.Name)  ($([math]::Round($_.Length/1MB,1)) MB)"
+          }
+          $exe = Get-ChildItem "desktop-app\dist-package" -Filter "*.exe" |
+                 Where-Object { $_.Name -notmatch "uninstall" } |
+                 Select-Object -First 1
+          if ($exe) {
+            echo "INSTALLER_PATH=$($exe.FullName)" >> $env:GITHUB_ENV
+            echo "INSTALLER_NAME=$($exe.Name)" >> $env:GITHUB_ENV
+            Write-Host "Installer: $($exe.FullName)"
+          } else {
+            # If NSIS exe not found, try the dir output
+            $dir = Get-ChildItem "desktop-app\dist-package" -Filter "win-unpacked" -Directory | Select-Object -First 1
+            Write-Error "No installer .exe found. Dir output: $($dir?.FullName)"
+            exit 1
+          }
 
       # ── Create GitHub Release ─────────────────────────────────────────────────
-      - name: Create GitHub Release
+      - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ env.RELEASE_VERSION }}
@@ -112,25 +135,28 @@ jobs:
           body: |
             ## Genux AI Studio v${{ env.RELEASE_VERSION }}
 
-            ### Installation
-            1. Download **${{ env.INSTALLER_NAME }}** below
-            2. Run the installer — it sets up everything automatically
-            3. Open **Settings → Models** to download AI models (Wan 2.1, SAM 2.1, etc.)
-            4. In Settings → Models → **Install AI Engine Packages** to set up PyTorch CUDA
+            ### Install
+            1. Download **${{ env.INSTALLER_NAME }}** below and run it
+            2. Open the app → **Settings → Models** → download AI models
+            3. **Settings → Models → Install AI Engine Packages** (Python CUDA setup)
+            4. Add character photos to the **Vault** → use `@attachment1` in prompts
+            5. Drop a video → hit **Recast** 🚀
 
-            ### What's included
-            - 🎬 Video recasting with multi-character swap
-            - 🏎️ Background/scene/object replacement (cars, weather, trees, etc.)
-            - 🤖 Wan 2.1 FP8 + SAM 2.1 + DWPose + RIFE 60fps pipeline
-            - 🔧 Auto Python environment setup via Settings
+            ### Pipeline stages (v${{ env.RELEASE_VERSION }})
+            | Stage | Model | Size |
+            |---|---|---|
+            | Character masking | SAM 2.1 Hiera-Large | 898 MB |
+            | Skeleton tracking | DWPose 133-pt | 420 MB |
+            | Prompt director | Gemma 2B Q4_K_M | 1.6 GB |
+            | Video synthesis | **Wan 2.1 14B FP8** | 16.4 GB |
+            | **Lip sync** *(optional)* | **LatentSync 1.5** | 1.7 GB |
+            | Lip sync fallback | Wav2Lip GAN | 272 MB |
+            | Frame interpolation | RIFE 60fps | bundled |
 
-            ### System Requirements
+            ### Requirements
             - Windows 10/11 64-bit
-            - NVIDIA GPU with 8GB+ VRAM (recommended: RTX 4080/5080 or better)
-            - Python 3.10+ (for AI inference — download from [python.org](https://python.org))
-
-            ---
-            *Full source code: [github.com/Xonarouss/genuxaistudio](https://github.com/Xonarouss/genuxaistudio)*
+            - NVIDIA GPU 8GB+ VRAM (RTX 4080/5080 recommended)
+            - Python 3.10+ from [python.org](https://python.org) (for AI engine)
           files: ${{ env.INSTALLER_PATH }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
