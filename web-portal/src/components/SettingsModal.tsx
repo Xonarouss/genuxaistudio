@@ -188,8 +188,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   ];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-2xl animate-fadeIn select-none font-sans">
-      <div className="relative w-full max-w-3xl h-[620px] max-h-[92vh] bg-[#14151B] border border-white/[0.08] rounded-3xl shadow-[0_0_80px_rgba(0,0,0,0.9)] overflow-hidden flex flex-col text-slate-100">
+    <div 
+      onClick={onClose}
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#06080E]/90 animate-fadeIn select-none font-sans"
+    >
+      <div 
+        onClick={(e) => e.stopPropagation()}
+        className="relative w-full max-w-3xl h-[620px] max-h-[92vh] bg-[#14151B] border border-white/[0.08] rounded-3xl shadow-[0_0_80px_rgba(0,0,0,0.9)] overflow-hidden flex flex-col text-slate-100"
+      >
         
         {/* Top Accent Gradient Border */}
         <div className="h-[2px] w-full bg-gradient-to-r from-violet-600 via-fuchsia-500 to-cyan-400 shrink-0" />
@@ -860,6 +866,22 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         <ExternalLink size={11} />
                       </a>
 
+                      <a
+                        href="https://buymeacoffee.com/xonarous"
+                        target="_blank"
+                        rel="noreferrer"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          const url = 'https://buymeacoffee.com/xonarous';
+                          if (window.genuxNative?.openExternal) window.genuxNative.openExternal(url);
+                          else window.open(url, '_blank');
+                        }}
+                        className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-white font-extrabold text-[11px] transition flex items-center gap-1.5 shadow-[0_0_20px_rgba(245,158,11,0.4)]"
+                      >
+                        <span className="text-sm">🍺</span>
+                        <span>Buy me a beer</span>
+                      </a>
+
                       <button
                         onClick={() => {
                           const url = 'https://docs.genuxai.io';
@@ -873,6 +895,36 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       >
                         Documentation
                       </button>
+
+                      <a
+                        href="https://genuxai.io/privacy"
+                        target="_blank"
+                        rel="noreferrer"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          const url = 'https://genuxai.io/privacy';
+                          if (window.genuxNative?.openExternal) window.genuxNative.openExternal(url);
+                          else window.open(url, '_blank');
+                        }}
+                        className="px-3 py-1.5 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] text-slate-300 hover:text-white text-[11px] font-semibold transition"
+                      >
+                        Privacy Policy
+                      </a>
+
+                      <a
+                        href="https://genuxai.io/terms"
+                        target="_blank"
+                        rel="noreferrer"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          const url = 'https://genuxai.io/terms';
+                          if (window.genuxNative?.openExternal) window.genuxNative.openExternal(url);
+                          else window.open(url, '_blank');
+                        }}
+                        className="px-3 py-1.5 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] text-slate-300 hover:text-white text-[11px] font-semibold transition"
+                      >
+                        Terms of Service
+                      </a>
                     </div>
                   </div>
 

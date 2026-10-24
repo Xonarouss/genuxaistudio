@@ -7,9 +7,10 @@
 [![Windows](https://img.shields.io/badge/Platform-Windows%2010%20%2F%2011%20x64-blue.svg?style=for-the-badge&logo=windows)](https://genuxai.io)
 [![CUDA](https://img.shields.io/badge/CUDA-12.8%2B%20%7C%20TensorRT%2010.x-green.svg?style=for-the-badge&logo=nvidia)](https://genuxai.io)
 [![Architecture](https://img.shields.io/badge/Architecture-Blackwell%20FP8%20%2F%20BF16-purple.svg?style=for-the-badge)](https://genuxai.io)
+[![Buy me a beer](https://img.shields.io/badge/🍺%20Buy%20me%20a%20beer-buymeacoffee.com%2Fxonarous-amber.svg?style=for-the-badge&logo=buy-me-a-coffee&logoColor=white)](https://buymeacoffee.com/xonarous)
 [![License](https://img.shields.io/badge/License-Proprietary%20Commercial-red.svg?style=for-the-badge)](https://xonarous.nl)
 
-[**Website (genuxai.io)**](https://genuxai.io) • [**Documentation (docs.genuxai.io)**](https://docs.genuxai.io) • [**Releases (.exe)**](https://github.com/Xonarouss/genuxaistudio/releases) • [**Company (xonarous.nl)**](https://xonarous.nl)
+[**🍺 Buy Me a Beer**](https://buymeacoffee.com/xonarous) • [**Website (genuxai.io)**](https://genuxai.io) • [**Documentation (docs.genuxai.io)**](https://docs.genuxai.io) • [**Releases (.exe)**](https://github.com/Xonarouss/genuxaistudio/releases) • [**Company (xonarous.nl)**](https://xonarous.nl)
 
 </div>
 

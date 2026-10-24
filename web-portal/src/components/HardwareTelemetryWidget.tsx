@@ -5,6 +5,7 @@ export interface TelemetryData {
   gpuName: string;
   gpuShortName: string;
   gpuUtil: number;
+  gpuTempC?: number;
   vramUsedGb: number;
   vramTotalGb: number;
   powerDrawW: number;
@@ -22,6 +23,7 @@ const DEFAULT_TELEMETRY: TelemetryData = {
   gpuName: 'NVIDIA GeForce GPU',
   gpuShortName: 'GPU (12GB+)',
   gpuUtil: 4,
+  gpuTempC: 48,
   vramUsedGb: 1.8,
   vramTotalGb: 16.0,
   powerDrawW: 42,
@@ -130,6 +132,25 @@ export const HardwareTelemetryWidget: React.FC<HardwareTelemetryWidgetProps> = (
                 <div 
                   className="h-full bg-emerald-400 rounded-full transition-all duration-300"
                   style={{ width: `${Math.max(4, telemetry.gpuUtil)}%` }}
+                />
+              </div>
+            </div>
+
+            
+            {/* GPU Temperature */}
+            <div className="space-y-1">
+              <div className="flex justify-between items-center text-[11px] font-mono">
+                <span className="text-slate-400">GPU Temp</span>
+                <span className={(telemetry.gpuTempC || 48) > 80 ? "text-rose-400 font-bold" : (telemetry.gpuTempC || 48) > 65 ? "text-amber-400 font-bold" : "text-emerald-400 font-bold"}>
+                  {telemetry.gpuTempC || 48}°C
+                </span>
+              </div>
+              <div className="w-full h-1.5 bg-[#161B26] rounded-full overflow-hidden">
+                <div 
+                  className={`h-full rounded-full transition-all duration-300 ${
+                    (telemetry.gpuTempC || 48) > 80 ? 'bg-rose-500' : (telemetry.gpuTempC || 48) > 65 ? 'bg-amber-400' : 'bg-emerald-400'
+                  }`}
+                  style={{ width: `${Math.min(100, Math.max(5, (((telemetry.gpuTempC || 48) - 20) / 75) * 100))}%` }}
                 />
               </div>
             </div>

@@ -7,18 +7,24 @@ import { FeatureBento } from './components/FeatureBento';
 import { ArchitectureSection } from './components/ArchitectureSection';
 import { Footer } from './components/Footer';
 import { DocsPage } from './components/DocsPage';
+import { PrivacyPolicyPage } from './components/PrivacyPolicyPage';
+import { TermsOfServicePage } from './components/TermsOfServicePage';
 import { Download, X, BookOpen } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
 export function App() {
   const [isDocsOpen, setIsDocsOpen] = useState<boolean>(false);
   const [downloadModalOpen, setDownloadModalOpen] = useState<boolean>(false);
+  const [isPrivacyOpen, setIsPrivacyOpen] = useState<boolean>(false);
+  const [isTermsOpen, setIsTermsOpen] = useState<boolean>(false);
 
-  // Check URL hash or query param for ?docs
+  // Check URL hash or query param for ?docs, ?privacy, ?terms
   useEffect(() => {
-    if (window.location.search.includes('docs') || window.location.hash.includes('docs')) {
-      setIsDocsOpen(true);
-    }
+    const s = window.location.search;
+    const h = window.location.hash;
+    if (s.includes('docs') || h.includes('docs')) setIsDocsOpen(true);
+    if (s.includes('privacy') || h.includes('privacy')) setIsPrivacyOpen(true);
+    if (s.includes('terms') || h.includes('terms')) setIsTermsOpen(true);
   }, []);
 
   const handleDownloadExe = () => {
@@ -29,6 +35,32 @@ export function App() {
       origin: { y: 0.7 }
     });
   };
+
+  // If Privacy Policy view is active, render dedicated white page
+  if (isPrivacyOpen) {
+    return (
+      <PrivacyPolicyPage
+        onBack={() => {
+          setIsPrivacyOpen(false);
+          window.history.pushState(null, '', window.location.pathname);
+        }}
+        onDownloadExe={handleDownloadExe}
+      />
+    );
+  }
+
+  // If Terms of Service view is active, render dedicated white page
+  if (isTermsOpen) {
+    return (
+      <TermsOfServicePage
+        onBack={() => {
+          setIsTermsOpen(false);
+          window.history.pushState(null, '', window.location.pathname);
+        }}
+        onDownloadExe={handleDownloadExe}
+      />
+    );
+  }
 
   // If Docs view is active, render the extensive documentation portal on localhost
   if (isDocsOpen) {
@@ -77,6 +109,8 @@ export function App() {
       {/* Footer */}
       <Footer 
         onDownloadExe={handleDownloadExe}
+        onOpenPrivacy={() => setIsPrivacyOpen(true)}
+        onOpenTerms={() => setIsTermsOpen(true)}
       />
 
       {/* Download Windows App Modal */}

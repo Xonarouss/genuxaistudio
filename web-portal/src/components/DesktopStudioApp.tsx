@@ -163,10 +163,116 @@ const CAMERA_MOTIONS = [
   { id: 'handheld', label: 'Cinematic Handheld', icon: Flame, desc: 'Organic realistic operator physics with micro-shakes' }
 ];
 
+
+class SafeSettingsErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean; error: string }> {
+  constructor(props: any) {
+    super(props);
+    this.state = { hasError: false, error: '' };
+  }
+  static getDerivedStateFromError(error: any) {
+    return { hasError: true, error: error?.message || 'Error loading settings' };
+  }
+  componentDidCatch(error: any, errorInfo: any) {
+    console.error('[Settings ErrorBoundary]', error, errorInfo);
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#06080E]/90 text-white font-sans">
+          <div className="bg-[#14151B] border border-rose-500/40 rounded-2xl p-6 max-w-md space-y-4 text-center">
+            <h3 className="font-bold text-base text-rose-400">Settings Recovery Mode</h3>
+            <p className="text-xs text-slate-300">An unexpected error was caught: {this.state.error}</p>
+            <button
+              onClick={() => {
+                localStorage.removeItem('genux_unified_settings');
+                window.location.reload();
+              }}
+              className="px-4 py-2 rounded-xl bg-violet-600 hover:bg-violet-500 text-xs font-bold"
+            >
+              Reset Settings &amp; Reload
+            </button>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 export const DesktopStudioApp: React.FC = () => {
   // 1. Startup Splash Screen (eliminates black screen flash)
   const [showStartupSplash, setShowStartupSplash] = useState<boolean>(true);
   const [splashFadeOut, setSplashFadeOut] = useState<boolean>(false);
+
+  
+  // Draggable Resizable Sidebars (Saved in localStorage)
+  const [leftSidebarWidth, setLeftSidebarWidth] = useState<number>(() => {
+    const saved = localStorage.getItem('genux_sidebar_left_width');
+    return saved ? Math.max(200, Math.min(420, parseInt(saved, 10))) : 230;
+  });
+  const [rightSidebarWidth, setRightSidebarWidth] = useState<number>(() => {
+    const saved = localStorage.getItem('genux_sidebar_right_width');
+    return saved ? Math.max(280, Math.min(540, parseInt(saved, 10))) : 360;
+  });
+  const isDraggingLeftRef = useRef<boolean>(false);
+  const isDraggingRightRef = useRef<boolean>(false);
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (isDraggingLeftRef.current) {
+        const newWidth = Math.max(200, Math.min(420, e.clientX));
+        setLeftSidebarWidth(newWidth);
+        localStorage.setItem('genux_sidebar_left_width', String(newWidth));
+      } else if (isDraggingRightRef.current) {
+        const newWidth = Math.max(280, Math.min(540, window.innerWidth - e.clientX));
+        setRightSidebarWidth(newWidth);
+        localStorage.setItem('genux_sidebar_right_width', String(newWidth));
+      }
+    };
+    const handleMouseUp = () => {
+      isDraggingLeftRef.current = false;
+      isDraggingRightRef.current = false;
+      document.body.style.cursor = 'default';
+      document.body.style.userSelect = 'auto';
+    };
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, []);
+
+  const handleLeftResizeStart = (e: React.MouseEvent) => {
+    e.preventDefault();
+    isDraggingLeftRef.current = true;
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+  };
+
+  const handleRightResizeStart = (e: React.MouseEvent) => {
+    e.preventDefault();
+    isDraggingRightRef.current = true;
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+  };
+
+  // Magic Prompt Enhancement
+  const handleMagicEnhancePrompt = (target: 'recast' | 'scene') => {
+    if (target === 'recast') {
+      const base = recastPrompt.trim();
+      const enhanced = base 
+        ? `${base}, preserving 100% original 1:1 camera motion physics and temporal kinematics, 8K ultra-detailed photorealistic skin textures, seamless temporal coherence, Wan 2.1 Blackwell FP8 latent synthesis.`
+        : `Swap subject with @attachment1, 100% 1:1 camera physics and motion preservation, 8K photorealistic textures, dynamic volumetric lighting integration, seamless temporal coherence, Wan 2.1 Blackwell FP8 neural synthesis.`;
+      setRecastPrompt(enhanced);
+    } else {
+      const base = sceneDirectorPrompt.trim();
+      const enhanced = base
+        ? `${base}, photorealistic environmental grading, high-contrast atmospheric depth, volumetric ray-tracing reflections, maintain original actor perspective and 1:1 kinematics.`
+        : `Transform background environment to high-contrast neon rainy Tokyo street with wet pavement reflections, change car to matte black hypercar with volumetric headlights, add cybernetic jacket details, lock 1:1 camera movement and subject perspective.`;
+      setSceneDirectorPrompt(enhanced);
+    }
+  };
 
   // 2. Navigation & Sidebar (Viral trends removed, defaults to my_imports)
   const [activeNav, setActiveNav] = useState<'create' | 'library' | 'twins' | 'console'>('create');
@@ -832,7 +938,7 @@ export const DesktopStudioApp: React.FC = () => {
         {/* ========================================================= */}
         {/* PERMANENT LEFT NAVIGATION SIDEBAR (SCREENSHOT 4 STYLE)    */}
         {/* ========================================================= */}
-        <nav className="w-56 bg-[#0A0C13] border-r border-white/[0.06] flex flex-col justify-between shrink-0 p-3 select-none">
+        <nav style={{ width: `${leftSidebarWidth}px` }} className="bg-[#0A0C13] border-r border-white/[0.06] flex flex-col justify-between shrink-0 p-3 select-none">
           
           {/* Top Brand & Primary Nav Items */}
           <div className="space-y-4">
@@ -925,6 +1031,15 @@ export const DesktopStudioApp: React.FC = () => {
           </div>
 
         </nav>
+
+        {/* Draggable Splitter Handle for Left Sidebar */}
+        <div
+          onMouseDown={handleLeftResizeStart}
+          className="w-1 hover:w-1.5 bg-transparent hover:bg-violet-500/50 cursor-col-resize transition-all shrink-0 z-30 group relative"
+          title="Drag to resize left sidebar"
+        >
+          <div className="absolute inset-y-0 -left-1 -right-1" />
+        </div>
 
         {/* ========================================================= */}
         {/* VIEW 1: CREATE WORKSPACE (STAGE + HIGGSFIELD CONTROLS)    */}
@@ -1293,7 +1408,16 @@ export const DesktopStudioApp: React.FC = () => {
             </main>
 
             {/* Right Higgsfield Camera & Director Panel */}
-            <aside className="w-80 bg-[#090B10] border-l border-white/[0.06] flex flex-col p-4 space-y-5 overflow-y-auto shrink-0 select-none">
+            {/* Draggable Splitter Handle for Right Inspector Sidebar */}
+            <div
+              onMouseDown={handleRightResizeStart}
+              className="w-1 hover:w-1.5 bg-transparent hover:bg-violet-500/50 cursor-col-resize transition-all shrink-0 z-30 group relative"
+              title="Drag to resize right sidebar"
+            >
+              <div className="absolute inset-y-0 -left-1 -right-1" />
+            </div>
+
+            <aside style={{ width: `${rightSidebarWidth}px` }} className="bg-[#090B10] border-l border-white/[0.06] flex flex-col p-4 space-y-5 overflow-y-auto shrink-0 select-none">
               
               {/* Aspect Ratio Picker */}
               <div className="space-y-2">
@@ -1380,19 +1504,26 @@ export const DesktopStudioApp: React.FC = () => {
               </div>
 
               {/* Multi-Character Recast Prompt with Glowing Tags */}
-              <div className="space-y-1.5">
+              <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <label className="text-[11px] font-mono font-bold text-slate-400 uppercase tracking-wider block">
-                    Recast Identity Prompt
+                  <label className="text-[11px] font-mono font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
+                    <span>Recast Identity Prompt</span>
                   </label>
-                  <span className="text-[10px] font-mono text-cyan-400">Wan 2.1 Motion Swap</span>
+                  <button
+                    onClick={() => handleMagicEnhancePrompt('recast')}
+                    className="px-2.5 py-1 rounded-lg bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white font-bold text-[10px] flex items-center gap-1 shadow-sm transition"
+                    title="Intelligently expand prompt with Gemma 2 / Wan 2.1 tokens"
+                  >
+                    <Sparkles size={11} className="text-cyan-300 animate-pulse" />
+                    <span>✨ Magic Prompt</span>
+                  </button>
                 </div>
                 <textarea
-                  rows={2}
+                  rows={3}
                   value={recastPrompt}
                   onChange={(e) => setRecastPrompt(e.target.value)}
-                  placeholder="e.g. Swap dancer with @attachment1 and background dancer with @attachment2..."
-                  className="w-full bg-[#11141F] border border-white/[0.08] rounded-xl p-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 font-sans"
+                  placeholder="e.g. Swap character with @attachment1, 100% 1:1 camera physics and motion preservation..."
+                  className="w-full min-h-[75px] bg-[#11141F] border border-white/[0.12] focus:border-cyan-400 rounded-xl p-3 text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-cyan-400/40 font-sans leading-relaxed transition"
                 />
                 
                 {/* Visual Glowing Tag Highlighter Preview */}
@@ -1414,20 +1545,45 @@ export const DesktopStudioApp: React.FC = () => {
               </div>
 
               {/* Gemma 2 Scene, Area & Object Director */}
-              <div className="space-y-1.5">
+              <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <label className="text-[11px] font-mono font-bold text-slate-400 uppercase tracking-wider block">
-                    Scene, Area & Object Director (Gemma 2)
+                  <label className="text-[11px] font-mono font-bold text-slate-300 uppercase tracking-wider block">
+                    Scene &amp; Object Director (Gemma 2)
                   </label>
-                  <span className="text-[10px] font-mono text-emerald-400">Props & Environment</span>
+                  <button
+                    onClick={() => handleMagicEnhancePrompt('scene')}
+                    className="px-2.5 py-1 rounded-lg bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-[10px] flex items-center gap-1 shadow-sm transition"
+                    title="Generate cinematic props, lighting & area details"
+                  >
+                    <Sparkles size={11} className="text-amber-300 animate-pulse" />
+                    <span>✨ Magic Scene</span>
+                  </button>
                 </div>
                 <textarea
-                  rows={2}
+                  rows={3}
                   value={sceneDirectorPrompt}
                   onChange={(e) => setSceneDirectorPrompt(e.target.value)}
-                  placeholder="e.g. Change street to neon rainy Tokyo, change the car to a matte black Ferrari, change jacket to cyber armor, lock 1:1 camera physics..."
-                  className="w-full bg-[#11141F] border border-white/[0.08] rounded-xl p-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 font-sans"
+                  placeholder="e.g. Change street to neon rainy Tokyo, change car to matte black Ferrari, change jacket to cyber armor, lock 1:1 camera physics..."
+                  className="w-full min-h-[75px] bg-[#11141F] border border-white/[0.12] focus:border-emerald-400 rounded-xl p-3 text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-emerald-400/40 font-sans leading-relaxed transition"
                 />
+                
+                {/* 1-Click Quick Preset Chips */}
+                <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
+                  {[
+                    { label: '⚡ Cyber Tokyo', text: 'Neon rainy Tokyo street, wet pavement reflections, cyberpunk atmosphere' },
+                    { label: '🎬 Film Noir', text: 'High-contrast 35mm film noir, dramatic volumetric shadows, moody fog' },
+                    { label: '🌅 Golden Hour', text: 'Golden hour sunset lighting, warm rim light, cinematic lens flares' },
+                    { label: '🏎️ Matte Hypercar', text: 'Change vehicle to matte black hypercar with glowing LED accents' }
+                  ].map(chip => (
+                    <button
+                      key={chip.label}
+                      onClick={() => setSceneDirectorPrompt(chip.text)}
+                      className="px-2 py-0.5 rounded-md bg-white/[0.04] hover:bg-white/[0.1] border border-white/[0.06] text-[10px] text-slate-300 hover:text-white transition font-mono"
+                    >
+                      {chip.label}
+                    </button>
+                  ))}
+                </div>
                 <p className="text-[10px] text-slate-500 leading-snug">
                   Gemma 2 Director modifies scene objects, background, and cars while locking character motion and facial likeness.
                 </p>
@@ -1708,13 +1864,12 @@ export const DesktopStudioApp: React.FC = () => {
                           <div className="space-y-2">
                             {item.thumbnail && (
                               <div className="aspect-video w-full rounded-xl overflow-hidden bg-black/60 relative group/yt">
-                                <img src={item.thumbnail} alt={item.title} className="w-full h-full object-cover group-hover/yt:opacity-0 transition-opacity duration-300" />
-                                <iframe
-                                  src={`https://www.youtube-nocookie.com/embed/${item.id}?autoplay=1&mute=1&controls=0&loop=1`}
-                                  className="absolute inset-0 w-full h-full opacity-0 group-hover/yt:opacity-100 transition-opacity pointer-events-none"
-                                  allow="autoplay"
-                                  loading="lazy"
-                                />
+                                <img src={item.thumbnail} alt={item.title} className="w-full h-full object-cover group-hover/yt:scale-105 transition-transform duration-300" />
+                                <div className="absolute inset-0 bg-black/40 group-hover/yt:bg-black/15 transition-colors flex items-center justify-center">
+                                  <div className="w-10 h-10 rounded-full bg-violet-600/90 text-white flex items-center justify-center shadow-lg group-hover/yt:scale-110 transition-transform">
+                                    <Play size={16} className="fill-white ml-0.5" />
+                                  </div>
+                                </div>
                                 <span className="absolute bottom-2 right-2 px-1.5 py-0.5 rounded bg-black/80 font-mono text-[10px] text-white">
                                   {item.durationString}
                                 </span>
@@ -2097,19 +2252,21 @@ export const DesktopStudioApp: React.FC = () => {
       />
 
       {/* Unified Settings Modal (Matches Screenshot 2 & 3) */}
-      <SettingsModal
-        isOpen={isSettingsOpen}
-        onClose={() => {
-          setIsSettingsOpen(false);
-          const saved = localStorage.getItem('genux_unified_settings');
-          if (saved) {
-            try { setStudioUsername(JSON.parse(saved).username || 'Xonarous'); } catch (e) {}
-          }
-        }}
-        onSave={(newSettings) => {
-          setStudioUsername(newSettings.username || 'Xonarous');
-        }}
-      />
+      <SafeSettingsErrorBoundary>
+        <SettingsModal
+          isOpen={isSettingsOpen}
+          onClose={() => {
+            setIsSettingsOpen(false);
+            const saved = localStorage.getItem('genux_unified_settings');
+            if (saved) {
+              try { setStudioUsername(JSON.parse(saved).username || 'Xonarous'); } catch (e) {}
+            }
+          }}
+          onSave={(newSettings) => {
+            setStudioUsername(newSettings.username || 'Xonarous');
+          }}
+        />
+      </SafeSettingsErrorBoundary>
 
       {/* Auto-Updater Available Notification Toast */}
       {availableUpdateNotification && (

@@ -50,7 +50,7 @@ const INITIAL_MODELS: ModelItem[] = [
     name: 'DWPose 133-Keypoint Whole-Body Tracker',
     category: 'motion',
     source: 'OpenMMLab Official ONNX',
-    sourceUrl: 'https://huggingface.co/yagd/DWPose',
+    sourceUrl: 'https://huggingface.co/yzd-v/DWPose',
     size: '420 MB',
     status: 'missing',
     progress: 0,
@@ -158,7 +158,7 @@ export const ModelHubModal: React.FC<ModelHubModalProps> = ({ isOpen, onClose })
             const isDone = data.status === 'completed' || data.percent >= 100;
             return {
               ...m,
-              status: isDone ? 'installed' : (data.status === 'error' ? 'missing' : 'downloading'),
+              status: isDone ? 'installed' : ((data.status === 'error' || data.status === 'cancelled') ? 'missing' : 'downloading'),
               progress: data.percent || (isDone ? 100 : 0),
               downloadSpeed: data.speedMBps ? `${data.speedMBps} MB/s` : undefined,
               eta: data.etaSeconds ? `${data.etaSeconds}s` : undefined,
@@ -227,6 +227,17 @@ export const ModelHubModal: React.FC<ModelHubModalProps> = ({ isOpen, onClose })
         setIsScanning(false);
         setScanMessage('Scan complete: Models synced.');
       }, 800);
+    }
+  };
+
+    const handleCancelDownload = async (id: string) => {
+    setModels(prev => prev.map(m => m.id === id ? { ...m, status: 'missing', progress: 0 } : m));
+    if (window.genuxNative?.cancelModelDownload) {
+      try {
+        await window.genuxNative.cancelModelDownload(id);
+      } catch (err: any) {
+        console.error('Cancel download error for ' + id + ':', err);
+      }
     }
   };
 
@@ -466,9 +477,19 @@ export const ModelHubModal: React.FC<ModelHubModalProps> = ({ isOpen, onClose })
                         </button>
                       </div>
                     ) : isDownloading ? (
-                      <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-violet-500/20 border border-violet-500/30 text-violet-300 text-xs font-mono">
-                        <RefreshCw size={13} className="animate-spin text-cyan-400" />
-                        <span>Downloading</span>
+                      <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-violet-500/20 border border-violet-500/30 text-violet-300 text-xs font-mono">
+                          <RefreshCw size={13} className="animate-spin text-cyan-400" />
+                          <span>Downloading</span>
+                        </div>
+                        <button
+                          onClick={() => handleCancelDownload(model.id)}
+                          title="Cancel active download"
+                          className="px-2.5 py-1.5 rounded-xl bg-rose-500/15 hover:bg-rose-500/30 border border-rose-500/30 text-rose-300 hover:text-white transition cursor-pointer flex items-center gap-1 text-[11px] font-bold"
+                        >
+                          <X size={12} />
+                          <span>Cancel</span>
+                        </button>
                       </div>
                     ) : (
                       <div className="flex items-center gap-2">

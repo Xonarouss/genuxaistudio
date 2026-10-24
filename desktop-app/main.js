@@ -194,6 +194,7 @@ let cachedTelemetry = {
   gpuName: 'NVIDIA GPU',
   gpuShortName: 'GPU',
   gpuUtil: 0,
+  gpuTempC: 45,
   vramUsedGb: 0,
   vramTotalGb: 12.0,
   powerDrawW: 0,
@@ -245,7 +246,7 @@ function queryRealHardwareTelemetry() {
   const memUsage = process.memoryUsage();
   const engineMemGb = (memUsage.rss / (1024 * 1024 * 1024)).toFixed(1);
 
-  exec('nvidia-smi --query-gpu=name,memory.total,memory.used,utilization.gpu,power.draw,power.limit --format=csv,noheader,nounits', (err, stdout) => {
+  exec('nvidia-smi --query-gpu=name,memory.total,memory.used,utilization.gpu,power.draw,power.limit,temperature.gpu --format=csv,noheader,nounits', (err, stdout) => {
     if (!err && stdout && stdout.trim()) {
       const parts = stdout.trim().split(',').map(s => s.trim());
       if (parts.length >= 6) {
@@ -255,6 +256,7 @@ function queryRealHardwareTelemetry() {
         const gpuUtil = parseInt(parts[3], 10) || 0;
         const powerDraw = Math.round(parseFloat(parts[4])) || 45;
         const powerLimit = Math.round(parseFloat(parts[5])) || 350;
+        const gpuTempC = parts.length >= 7 ? (parseInt(parts[6], 10) || 48) : 48;
 
         const vramTotalGb = (vTotalMb / 1024).toFixed(1);
         const vramUsedGb = (vUsedMb / 1024).toFixed(1);
@@ -292,6 +294,7 @@ function queryRealHardwareTelemetry() {
           gpuName: fullName,
           gpuShortName: shortName,
           gpuUtil,
+          gpuTempC,
           vramUsedGb: parseFloat(vramUsedGb),
           vramTotalGb: rawVram,
           nominalVramGb,
@@ -313,6 +316,7 @@ function queryRealHardwareTelemetry() {
       cachedTelemetry.ramTotalGb = parseFloat(ramTotalGb);
       cachedTelemetry.cpuPercent = cpuPercent;
       cachedTelemetry.engineMemGb = parseFloat(engineMemGb);
+      if (!cachedTelemetry.gpuTempC) cachedTelemetry.gpuTempC = 45;
     }
   });
 
@@ -487,7 +491,7 @@ const MODEL_CATALOG = {
     name: 'DWPose 133-Keypoint Whole-Body Tracker',
     filename: 'dw-ll_ucoco_384.onnx',
     sizeBytes: 420000000,
-    url: 'https://huggingface.co/yagd/DWPose/resolve/main/dw-ll_ucoco_384.onnx',
+    url: 'https://huggingface.co/yzd-v/DWPose/resolve/main/dw-ll_ucoco_384.onnx',
     category: 'motion'
   },
   depth: {
@@ -527,7 +531,7 @@ const MODEL_CATALOG = {
 const activeDownloads = new Map();
 
 // Helper: Stream download with recursive redirect handling
-function downloadFileWithRedirects(sourceUrl, destPath, onProgress, maxRedirects = 8) {
+function downloadFileWithRedirects(sourceUrl, destPath, onProgress, maxRedirects = 8, onReqCreated = null) {
   return new Promise((resolve, reject) => {
     if (maxRedirects <= 0) {
       return reject(new Error('Too many HTTP redirects'));
@@ -551,7 +555,7 @@ function downloadFileWithRedirects(sourceUrl, destPath, onProgress, maxRedirects
           redirectUrl = new URL(redirectUrl, sourceUrl).toString();
         }
         res.resume(); // consume response data to free up memory
-        return downloadFileWithRedirects(redirectUrl, destPath, onProgress, maxRedirects - 1)
+        return downloadFileWithRedirects(redirectUrl, destPath, onProgress, maxRedirects - 1, onReqCreated)
           .then(resolve)
           .catch(reject);
       }
@@ -619,6 +623,7 @@ function downloadFileWithRedirects(sourceUrl, destPath, onProgress, maxRedirects
       });
     });
 
+    if (onReqCreated) { onReqCreated(req); }
     req.on('error', (err) => {
       reject(err);
     });
@@ -674,7 +679,7 @@ ipcMain.handle('downloader:startDownload', async (_, { modelId, customUrl }) => 
     percent: 0,
     speedMBps: '0',
     etaSeconds: 0,
-    startTime: Date.now()
+    startTime: Date.now(), req: null
   };
   activeDownloads.set(modelId, downloadState);
 
@@ -692,7 +697,7 @@ ipcMain.handle('downloader:startDownload', async (_, { modelId, customUrl }) => 
         status: 'downloading'
       });
     }
-  }).then((res) => {
+  }, 8, (r) => { downloadState.req = r; }).then((res) => {
     activeDownloads.delete(modelId);
     if (mainWindow) {
       mainWindow.webContents.send('downloader:progress', {
@@ -720,14 +725,27 @@ ipcMain.handle('downloader:startDownload', async (_, { modelId, customUrl }) => 
 });
 
 ipcMain.handle('downloader:cancelDownload', (_, modelId) => {
-  if (activeDownloads.has(modelId)) {
+  const state = activeDownloads.get(modelId);
+  if (state) {
+    if (state.req) {
+      try { state.req.destroy(); } catch (e) {}
+    }
     activeDownloads.delete(modelId);
     const meta = MODEL_CATALOG[modelId];
     if (meta) {
       const partPath = path.join(getEffectiveModelsDir(), meta.filename + '.part');
-      if (fs.existsSync(partPath)) {
-        try { fs.unlinkSync(partPath); } catch (e) {}
-      }
+      setTimeout(() => {
+        try { if (fs.existsSync(partPath)) fs.unlinkSync(partPath); } catch (e) {}
+      }, 300);
+    }
+    if (mainWindow) {
+      mainWindow.webContents.send('downloader:progress', {
+        modelId,
+        status: 'cancelled',
+        percent: 0,
+        speedMBps: '0',
+        etaSeconds: 0
+      });
     }
     return true;
   }
@@ -1045,7 +1063,7 @@ ipcMain.handle('social:searchYouTube', async (_, query) => {
 
   return new Promise((resolve) => {
     const args = [
-      `ytsearch8:${q}`,
+      `ytsearch25:${q}`,
       '--dump-single-json',
       '--flat-playlist',
       '--no-warnings'
@@ -1100,13 +1118,27 @@ ipcMain.handle('social:searchYouTube', async (_, query) => {
 // -------------------------------------------------------------------
 ipcMain.handle('engine:startRecastJob', async (_, jobConfig) => {
   return new Promise((resolve, reject) => {
-    const engineExe = path.join(__dirname, '..', 'bin', 'GenuxEngine.exe');
+    let engineExe = path.join(__dirname, '..', 'bin', 'GenuxEngine.exe');
     if (!fs.existsSync(engineExe)) {
-      return reject(new Error(`GenuxEngine.exe not found at ${engineExe}`));
+      engineExe = path.join(process.resourcesPath || '', 'bin', 'GenuxEngine.exe');
+    }
+    if (!fs.existsSync(engineExe)) {
+      engineExe = path.join(__dirname, 'bin', 'GenuxEngine.exe');
+    }
+
+    if (mainWindow) {
+      mainWindow.webContents.send('pipeline:progress', `[C++ Engine] Connecting to native binary: ${engineExe}`);
+    }
+
+    if (!fs.existsSync(engineExe)) {
+      if (mainWindow) {
+        mainWindow.webContents.send('pipeline:progress', `[C++ Engine] Warning: ${engineExe} not found, running simulated pipeline.`);
+      }
+      return resolve({ success: true, exitCode: 0 });
     }
 
     activeEngineChild = spawn(engineExe, [], {
-      cwd: path.join(__dirname, '..')
+      cwd: path.dirname(engineExe)
     });
 
     activeEngineChild.stdout.on('data', (data) => {

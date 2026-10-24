@@ -1,16 +1,20 @@
 import React from 'react';
 import { GenuxLogo } from './GenuxLogo';
-import { ExternalLink } from 'lucide-react';
+import { ExternalLink, ShieldCheck } from 'lucide-react';
 
 interface FooterProps {
   onDownloadExe: () => void;
+  onOpenPrivacy?: () => void;
+  onOpenTerms?: () => void;
 }
 
 export const Footer: React.FC<FooterProps> = ({ 
-  onDownloadExe 
+  onDownloadExe,
+  onOpenPrivacy,
+  onOpenTerms
 }) => {
   return (
-    <footer className="bg-slate-50 border-t border-slate-200 py-16 text-xs text-slate-500">
+    <footer className="bg-slate-50 border-t border-slate-200 py-16 text-xs text-slate-500 font-sans">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="grid grid-cols-1 md:grid-cols-5 gap-10 mb-12">
           
@@ -27,6 +31,19 @@ export const Footer: React.FC<FooterProps> = ({
             </p>
             <div className="text-[11px] font-mono text-slate-400">
               Windows 10/11 x64 • GPU Target: NVIDIA 12GB - 24GB VRAM
+            </div>
+
+            {/* Buy Me a Beer Button */}
+            <div className="pt-2">
+              <a 
+                href="https://buymeacoffee.com/xonarous" 
+                target="_blank" 
+                rel="noreferrer"
+                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 via-amber-400 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-white font-extrabold text-xs shadow-md shadow-amber-500/20 hover:shadow-amber-500/30 hover:scale-[1.02] transition transform duration-200"
+              >
+                <span className="text-sm">🍺</span>
+                <span>Buy me a beer</span>
+              </a>
             </div>
           </div>
 
@@ -48,7 +65,7 @@ export const Footer: React.FC<FooterProps> = ({
               </li>
               <li>
                 <a href="#features" className="hover:text-indigo-600 transition-colors">
-                  Features & Workflow
+                  Features &amp; Workflow
                 </a>
               </li>
               <li>
@@ -62,7 +79,7 @@ export const Footer: React.FC<FooterProps> = ({
           {/* Column 2: Resources */}
           <div>
             <h4 className="font-bold text-slate-900 uppercase tracking-wider text-[11px] mb-3">
-              Resources & Docs
+              Resources &amp; Docs
             </h4>
             <ul className="space-y-2.5">
               <li>
@@ -109,17 +126,37 @@ export const Footer: React.FC<FooterProps> = ({
             </ul>
           </div>
 
-          {/* Column 3: System Target */}
+          {/* Column 3: Legal & Privacy */}
           <div>
             <h4 className="font-bold text-slate-900 uppercase tracking-wider text-[11px] mb-3">
-              Hardware Target
+              Privacy &amp; Terms
             </h4>
-            <ul className="space-y-1.5 text-[11px] text-slate-600">
-              <li><strong className="text-slate-900">Minimum:</strong> RTX 3060 12GB</li>
-              <li><strong className="text-slate-900">Optimal:</strong> RTX 4080 / RTX 5080</li>
-              <li><strong className="text-slate-900">Flagship:</strong> RTX 5090 Blackwell</li>
-              <li><strong className="text-slate-900">RAM:</strong> 32 GB DDR4 / DDR5</li>
-              <li><strong className="text-slate-900">Storage:</strong> 50+ GB NVMe</li>
+            <ul className="space-y-2.5">
+              <li>
+                <button 
+                  onClick={onOpenPrivacy}
+                  className="hover:text-indigo-600 transition-colors text-left font-medium"
+                >
+                  Privacy Policy (100% Offline)
+                </button>
+              </li>
+              <li>
+                <button 
+                  onClick={onOpenTerms}
+                  className="hover:text-indigo-600 transition-colors text-left font-medium"
+                >
+                  Terms of Service
+                </button>
+              </li>
+              <li>
+                <button 
+                  onClick={onOpenPrivacy}
+                  className="text-slate-400 hover:text-indigo-600 transition-colors text-left flex items-center gap-1 text-[11px]"
+                >
+                  <ShieldCheck size={12} className="text-emerald-500" />
+                  <span>Telemetry &amp; Opt-In Info</span>
+                </button>
+              </li>
             </ul>
           </div>
         </div>
@@ -138,6 +175,10 @@ export const Footer: React.FC<FooterProps> = ({
             . All rights reserved. 100% On-Device Local Processing.
           </div>
           <div className="flex items-center gap-4">
+            <button onClick={onOpenPrivacy} className="hover:text-indigo-600 transition">Privacy</button>
+            <span>•</span>
+            <button onClick={onOpenTerms} className="hover:text-indigo-600 transition">Terms</button>
+            <span>•</span>
             <span>CUDA 12.8 / TensorRT 10.x</span>
             <span>•</span>
             <a href="https://genuxai.io" className="hover:text-indigo-600 transition">genuxai.io</a>
