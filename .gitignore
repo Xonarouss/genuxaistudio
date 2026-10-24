@@ -1,6 +1,10 @@
 # Dependencies
 node_modules/
 
+# User instructions & prompt files
+instructions.txt
+*instructions*.txt
+
 # Build outputs & packages
 *.exe
 dist/
