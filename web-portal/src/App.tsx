@@ -11,8 +11,19 @@ import { PrivacyPolicyPage } from './components/PrivacyPolicyPage';
 import { TermsOfServicePage } from './components/TermsOfServicePage';
 import { Download, X, BookOpen } from 'lucide-react';
 import confetti from 'canvas-confetti';
+import { DesktopStudioApp } from './components/DesktopStudioApp';
+
+// Detect if running inside the Electron desktop app.
+// preload.js exposes window.genuxNative via contextBridge when in Electron.
+const IS_ELECTRON = typeof window !== 'undefined' && !!(window as any).genuxNative;
 
 export function App() {
+  // ── Electron shell: render the full desktop studio UI ──────────────────────
+  if (IS_ELECTRON) {
+    return <DesktopStudioApp />;
+  }
+
+  // ── Browser / web: render the marketing website ────────────────────────────
   const [isDocsOpen, setIsDocsOpen] = useState<boolean>(false);
   const [downloadModalOpen, setDownloadModalOpen] = useState<boolean>(false);
   const [isPrivacyOpen, setIsPrivacyOpen] = useState<boolean>(false);
