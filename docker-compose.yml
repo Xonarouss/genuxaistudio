@@ -19,6 +19,14 @@ services:
       - JWT_SECRET=genux-admin-super-secure-key-2026
     volumes:
       - genux-data:/app/data
+    networks:
+      - default
+      - coolify
 
 volumes:
   genux-data:
+
+networks:
+  default:
+  coolify:
+    external: true
