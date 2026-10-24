@@ -8,7 +8,7 @@
 FROM node:20-alpine AS web-builder
 WORKDIR /build/web-portal
 COPY web-portal/package*.json ./
-RUN npm ci
+RUN npm install
 COPY web-portal/ ./
 RUN npm run build
 
@@ -21,7 +21,7 @@ ENV PORT=3000
 
 # Install Backend Dependencies
 COPY backend-portal/package*.json ./
-RUN npm ci --only=production
+RUN npm install --omit=dev
 
 # Copy Backend Core
 COPY backend-portal/ ./
