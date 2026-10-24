@@ -68,12 +68,28 @@ jobs:
           npm version $ver --no-git-tag-version
         working-directory: desktop-app
 
+      # ── Install NSIS (required by electron-builder on Windows CI) ────────────
+      - name: Install NSIS via Chocolatey
+        shell: pwsh
+        run: choco install nsis -y --no-progress
+
+      # ── Debug: confirm dist-ui is in place ────────────────────────────────────
+      - name: Confirm dist-ui contents
+        shell: pwsh
+        run: |
+          Write-Host "dist-ui files:"
+          Get-ChildItem "desktop-app/dist-ui" -Recurse | Select-Object -First 10 | ForEach-Object { Write-Host $_.FullName }
+
       # ── Build NSIS installer ──────────────────────────────────────────────────
       - name: Build Electron NSIS installer
         run: npx electron-builder --win nsis --publish never
         working-directory: desktop-app
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Disable code signing — no certificate available in CI
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+          WIN_CSC_LINK: ""
+          WIN_CSC_KEY_PASSWORD: ""
 
       # ── Find installer artifact ───────────────────────────────────────────────
       - name: Find installer file
