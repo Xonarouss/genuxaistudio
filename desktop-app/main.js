@@ -1178,7 +1178,27 @@ ipcMain.handle('social:searchYouTube', async (_, query) => {
 // -------------------------------------------------------------------
 
 /** Find the Python executable (python3 > python > py) */
+// ---------------------------------------------------------------------------
+// Embedded Python — auto-downloaded into userData, no system Python needed
+// ---------------------------------------------------------------------------
+const EMBEDDED_PYTHON_VERSION = '3.11.9';
+const EMBEDDED_PYTHON_URL = `https://www.python.org/ftp/python/${EMBEDDED_PYTHON_VERSION}/python-${EMBEDDED_PYTHON_VERSION}-embed-amd64.zip`;
+const GET_PIP_URL = 'https://bootstrap.pypa.io/get-pip.py';
+
+function getEmbeddedPythonDir() {
+  return path.join(app.getPath('userData'), 'embedded-python');
+}
+
+function getEmbeddedPythonExe() {
+  return path.join(getEmbeddedPythonDir(), 'python.exe');
+}
+
 function findPythonExe() {
+  // 1. Prefer our bundled embedded Python (auto-downloaded)
+  const embedded = getEmbeddedPythonExe();
+  if (fs.existsSync(embedded)) return embedded;
+
+  // 2. Fallback: system Python (may not exist on fresh machines)
   for (const cmd of ['python3', 'python', 'py']) {
     try {
       const r = require('child_process').spawnSync(cmd, ['--version'], { timeout: 3000 });
@@ -1186,6 +1206,121 @@ function findPythonExe() {
     } catch {}
   }
   return null;
+}
+
+/**
+ * Downloads, extracts and bootstraps pip for embedded Python.
+ * Sends progress messages to the renderer via 'setup:pipProgress'.
+ */
+async function bootstrapEmbeddedPython() {
+  const { https: httpsModule, http: httpModule } = { https: require('https'), http: require('http') };
+  const { createWriteStream, mkdirSync, existsSync, readFileSync, writeFileSync } = fs;
+  const pythonDir = getEmbeddedPythonDir();
+  const pythonExe = getEmbeddedPythonExe();
+
+  function sendProgress(msg) {
+    if (mainWindow) mainWindow.webContents.send('setup:pipProgress', msg);
+    console.log('[EmbeddedPython]', msg);
+  }
+
+  // Skip if already bootstrapped
+  if (existsSync(pythonExe)) {
+    sendProgress('✓ Embedded Python already installed.');
+    return { success: true, pythonExe };
+  }
+
+  mkdirSync(pythonDir, { recursive: true });
+
+  // ── Step 1: Download Python embeddable zip ────────────────────────────────
+  const zipPath = path.join(pythonDir, 'python-embed.zip');
+  sendProgress(`⬇ Downloading Python ${EMBEDDED_PYTHON_VERSION} (~10 MB)...`);
+
+  await new Promise((resolve, reject) => {
+    function download(url, dest, redirects = 8) {
+      const mod = url.startsWith('https') ? httpsModule : httpModule;
+      mod.get(url, { timeout: 60000 }, (res) => {
+        if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+          return redirects > 0
+            ? download(res.headers.location, dest, redirects - 1)
+            : reject(new Error('Too many redirects'));
+        }
+        const total = parseInt(res.headers['content-length'] || '0', 10);
+        let downloaded = 0;
+        const file = createWriteStream(dest);
+        res.on('data', chunk => {
+          downloaded += chunk.length;
+          if (total > 0) {
+            const pct = Math.round((downloaded / total) * 100);
+            if (pct % 10 === 0) sendProgress(`⬇ Python download: ${pct}%`);
+          }
+        });
+        res.pipe(file);
+        file.on('finish', () => file.close(resolve));
+        file.on('error', reject);
+      }).on('error', reject);
+    }
+    download(EMBEDDED_PYTHON_URL, zipPath);
+  });
+
+  sendProgress('📦 Extracting Python...');
+
+  // ── Step 2: Extract zip using PowerShell (built-in on Windows) ────────────
+  await new Promise((resolve, reject) => {
+    const proc = require('child_process').spawn('powershell', [
+      '-NoProfile', '-Command',
+      `Expand-Archive -Path '${zipPath}' -DestinationPath '${pythonDir}' -Force`
+    ], { stdio: 'pipe' });
+    proc.on('close', code => code === 0 ? resolve() : reject(new Error(`Unzip failed: ${code}`)));
+    proc.on('error', reject);
+  });
+
+  // ── Step 3: Enable site-packages (required for pip to work) ───────────────
+  // The ._pth file controls Python's module search. Uncomment 'import site'.
+  const pthFiles = fs.readdirSync(pythonDir).filter(f => f.endsWith('._pth'));
+  for (const pthFile of pthFiles) {
+    const pthPath = path.join(pythonDir, pthFile);
+    let content = readFileSync(pthPath, 'utf8');
+    // Enable site-packages by uncommenting #import site
+    content = content.replace('#import site', 'import site');
+    if (!content.includes('import site')) content += '\nimport site\n';
+    writeFileSync(pthPath, content, 'utf8');
+  }
+  sendProgress('✓ Python extracted and configured.');
+
+  // ── Step 4: Download get-pip.py ───────────────────────────────────────────
+  const getPipPath = path.join(pythonDir, 'get-pip.py');
+  sendProgress('⬇ Downloading pip bootstrap...');
+  await new Promise((resolve, reject) => {
+    function dl(url, dest, redirects = 5) {
+      const mod = url.startsWith('https') ? httpsModule : httpModule;
+      mod.get(url, { timeout: 30000 }, res => {
+        if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location)
+          return redirects > 0 ? dl(res.headers.location, dest, redirects - 1) : reject(new Error('redirect loop'));
+        const file = createWriteStream(dest);
+        res.pipe(file);
+        file.on('finish', () => file.close(resolve));
+        file.on('error', reject);
+      }).on('error', reject);
+    }
+    dl(GET_PIP_URL, getPipPath);
+  });
+
+  // ── Step 5: Run get-pip.py ────────────────────────────────────────────────
+  sendProgress('⚙ Installing pip...');
+  await new Promise((resolve, reject) => {
+    const proc = spawn(pythonExe, [getPipPath], {
+      cwd: pythonDir,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      env: { ...process.env, PYTHONHOME: pythonDir, PYTHONPATH: pythonDir }
+    });
+    proc.stdout.on('data', d => sendProgress(d.toString().trim()));
+    proc.stderr.on('data', d => sendProgress(d.toString().trim()));
+    proc.on('close', code => code === 0 ? resolve() : reject(new Error(`get-pip failed: ${code}`)));
+    proc.on('error', reject);
+  });
+
+  sendProgress('✅ Python + pip ready!');
+  return { success: true, pythonExe };
 }
 
 /** Shared JSON-line progress parser — used by both C++ and Python runners */
@@ -1438,39 +1573,100 @@ print(json.dumps({'python': sys.version, 'cuda': cuda, 'packages': results}))
   });
 });
 
-/** Install Python packages from requirements.txt */
+/** Install Python packages — auto-downloads embedded Python if not found */
 ipcMain.handle('setup:installPythonEnv', async () => {
-  const pyExe = findPythonExe();
+  function sendProgress(msg) {
+    if (mainWindow) mainWindow.webContents.send('setup:pipProgress', msg);
+  }
+
+  // ── Step 1: Ensure Python is available (auto-download if needed) ──────────
+  let pyExe = findPythonExe();
+
   if (!pyExe) {
-    return { success: false, error: 'Python not found. Install Python 3.10+ from python.org first.' };
+    sendProgress('🐍 Python not found — downloading embedded Python automatically...');
+    try {
+      const result = await bootstrapEmbeddedPython();
+      pyExe = result.pythonExe;
+    } catch (err) {
+      return { success: false, error: `Failed to install Python automatically: ${err.message}\n\nPlease install Python 3.11 manually from https://python.org` };
+    }
+  } else {
+    sendProgress(`✓ Python found: ${pyExe}`);
   }
 
-  const requirementsPath = path.join(__dirname, '..', 'engine-cpp', 'python', 'requirements.txt');
-  if (!fs.existsSync(requirementsPath)) {
-    return { success: false, error: `requirements.txt not found at ${requirementsPath}` };
+  // ── Step 2: Find requirements.txt ────────────────────────────────────────
+  // Try multiple locations (dev tree, installed app resources)
+  const requirementsCandidates = [
+    path.join(__dirname, '..', 'engine-cpp', 'python', 'requirements.txt'),
+    path.join(process.resourcesPath || '', 'requirements.txt'),
+    path.join(app.getPath('userData'), 'requirements.txt'),
+  ];
+  let requirementsPath = requirementsCandidates.find(p => fs.existsSync(p));
+
+  // If requirements.txt not bundled, write a minimal one
+  if (!requirementsPath) {
+    requirementsPath = path.join(app.getPath('userData'), 'requirements.txt');
+    const minimal = [
+      'numpy>=1.26.0',
+      'Pillow>=10.0.0',
+      'torch>=2.4.0+cu124; sys_platform == "win32"',
+      'torchvision>=0.19.0+cu124; sys_platform == "win32"',
+      'diffusers>=0.31.0',
+      'transformers>=4.44.0',
+      'accelerate>=0.34.0',
+      'safetensors>=0.4.3',
+      'onnxruntime-gpu>=1.20.0',
+      'opencv-python>=4.10.0',
+      'huggingface-hub>=0.26.0',
+      'librosa>=0.10.1',
+      'soundfile>=0.12.1',
+      'mediapipe>=0.10.9',
+      'scipy>=1.11.0',
+    ].join('\n');
+    fs.writeFileSync(requirementsPath, minimal, 'utf8');
+    sendProgress('📄 Created requirements.txt with AI packages list.');
   }
 
+  sendProgress('📦 Installing PyTorch + CUDA + AI packages (this takes a few minutes)...');
+  sendProgress('   Downloading up to ~5 GB of AI libraries — please wait.');
+
+  // ── Step 3: Install packages ──────────────────────────────────────────────
   return new Promise((resolve) => {
-    const proc = spawn(pyExe, [
-      '-m', 'pip', 'install', '-r', requirementsPath,
+    const pipArgs = [
+      '-m', 'pip', 'install',
+      '-r', requirementsPath,
       '--extra-index-url', 'https://download.pytorch.org/whl/cu124',
-      '--progress-bar', 'on'
-    ], { stdio: ['ignore', 'pipe', 'pipe'] });
+      '--no-warn-script-location',
+      '--disable-pip-version-check',
+    ];
 
+    const env = { ...process.env };
+    // For embedded Python: set PYTHONHOME to the extracted dir
+    const embeddedDir = getEmbeddedPythonDir();
+    if (fs.existsSync(path.join(embeddedDir, 'python.exe'))) {
+      env.PYTHONHOME = embeddedDir;
+    }
+
+    const proc = spawn(pyExe, pipArgs, { stdio: ['ignore', 'pipe', 'pipe'], env });
     let log = '';
 
     proc.stdout.on('data', (d) => {
       const msg = d.toString();
       log += msg;
-      if (mainWindow) mainWindow.webContents.send('setup:pipProgress', msg.trim());
+      sendProgress(msg.trim());
     });
     proc.stderr.on('data', (d) => {
       const msg = d.toString();
       log += msg;
-      if (mainWindow) mainWindow.webContents.send('setup:pipProgress', msg.trim());
+      // pip writes progress to stderr — show it
+      if (msg.trim()) sendProgress(msg.trim());
     });
-
     proc.on('close', (code) => {
+      if (code === 0) {
+        sendProgress('🎉 All AI packages installed successfully! Genux AI Studio is ready.');
+      } else {
+        sendProgress(`⚠ pip exited with code ${code}. Some packages may have failed.`);
+      }
       resolve({ success: code === 0, exitCode: code, log });
     });
     proc.on('error', (err) => {

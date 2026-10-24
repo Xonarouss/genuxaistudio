@@ -1,69 +1,69 @@
 {
-  "name": "genux-desktop-app",
-  "version": "1.0.0",
-  "description": "Genux AI Studio",
-  "main": "main.js",
-  "author": "Xonarous Inc (https://xonarous.nl)",
-  "scripts": {
-    "build:studio": "powershell -Command \"cd '../web-portal'; npx vite build --config vite.config.studio.ts; Copy-Item -Path '../desktop-app/dist-ui/desktop-studio.html' -Destination '../desktop-app/dist-ui/index.html' -Force\"",
-    "start": "electron .",
-    "build:dir": "electron-builder --dir",
-    "build:installer": "electron-builder --win nsis",
-    "build:win": "electron-builder --win nsis"
-  },
-  "build": {
-    "appId": "nl.xonarous.genux",
-    "productName": "Genux AI Studio",
-    "asar": false,
-    "copyright": "Copyright © 2026 Xonarous Inc (https://xonarous.nl)",
-    "directories": {
-      "output": "dist-package"
-    },
-    "win": {
-      "icon": "build/icon.ico",
-      "target": [
-        "dir",
-        "nsis"
-      ]
-    },
-    "nsis": {
-      "oneClick": false,
-      "perMachine": false,
-      "allowToChangeInstallationDirectory": true,
-      "installerIcon": "build/icon.ico",
-      "uninstallerIcon": "build/icon.ico",
-      "installerHeaderIcon": "build/icon.ico",
-      "installerSidebar": null,
-      "createDesktopShortcut": true,
-      "createStartMenuShortcut": true,
-      "shortcutName": "Genux AI Studio",
-      "artifactName": "Genux_AI_Setup_${version}.${ext}",
-      "include": "build/installer.nsh",
-      "runAfterFinish": true
-    },
-    "files": [
-      "main.js",
-      "preload.js",
-      "dist-ui/**/*",
-      "package.json",
-      "README.md",
-      "README.txt",
-      "icon.png"
-    ],
-    "extraResources": [
-      {
-        "from": "../bin",
-        "to": "bin"
-      }
-    ]
-  },
-  "dependencies": {
-    "ws": "^8.18.0"
-  },
-  "devDependencies": {
-    "electron": "^33.4.11",
-    "electron-builder": "^25.1.8",
-    "png-to-ico": "^3.0.2",
-    "sharp": "^0.35.5"
-  }
+    "name":  "genux-desktop-app",
+    "version":  "1.0.0",
+    "description":  "Genux AI Studio",
+    "main":  "main.js",
+    "author":  "Xonarous Inc (https://xonarous.nl)",
+    "scripts":  {
+                    "build:studio":  "powershell -Command \"cd \u0027../web-portal\u0027; npx vite build --config vite.config.studio.ts; Copy-Item -Path \u0027../desktop-app/dist-ui/desktop-studio.html\u0027 -Destination \u0027../desktop-app/dist-ui/index.html\u0027 -Force\"",
+                    "start":  "electron .",
+                    "build:dir":  "electron-builder --dir",
+                    "build:installer":  "electron-builder --win nsis",
+                    "build:win":  "electron-builder --win nsis"
+                },
+    "build":  {
+                  "appId":  "nl.xonarous.genux",
+                  "productName":  "Genux AI Studio",
+                  "asar":  false,
+                  "copyright":  "Copyright © 2026 Xonarous Inc (https://xonarous.nl)",
+                  "directories":  {
+                                      "output":  "dist-package"
+                                  },
+                  "win":  {
+                              "icon":  "build/icon.ico",
+                              "target":  [
+                                             "dir",
+                                             "nsis"
+                                         ]
+                          },
+                  "nsis":  {
+                               "oneClick":  false,
+                               "perMachine":  false,
+                               "allowToChangeInstallationDirectory":  true,
+                               "installerIcon":  "build/icon.ico",
+                               "uninstallerIcon":  "build/icon.ico",
+                               "installerHeaderIcon":  "build/icon.ico",
+                               "installerSidebar":  null,
+                               "createDesktopShortcut":  true,
+                               "createStartMenuShortcut":  true,
+                               "shortcutName":  "Genux AI Studio",
+                               "artifactName":  "Genux_AI_Setup_${version}.${ext}",
+                               "include":  "build/installer.nsh",
+                               "runAfterFinish":  true
+                           },
+                  "files":  [
+                                "main.js",
+                                "preload.js",
+                                "dist-ui/**/*",
+                                "package.json",
+                                "README.md",
+                                "README.txt",
+                                "icon.png"
+                            ],
+                  "extraResources":  [
+                                         {
+                                             "from":  "../bin",
+                                             "to":  "bin"
+                                         }
+                                     ]
+              },
+    "dependencies":  {
+                         "ws":  "^8.18.0"
+                     },
+    "devDependencies":  {
+                            "electron":  "^33.4.11",
+                            "electron-builder":  "^25.1.8",
+                            "png-to-ico":  "^3.0.2",
+                            "sharp":  "^0.35.5"
+                        }
 }

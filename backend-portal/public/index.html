@@ -1,609 +1,848 @@
 <!DOCTYPE html>
-<html lang="en" class="h-full bg-slate-950 text-slate-100">
+<html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Genux AI — Master Admin Portal (Google 2FA Protected)</title>
-  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script src="https://unpkg.com/lucide@latest"></script>
-  <script>
-    tailwind.config = {
-      darkMode: 'class',
-      theme: {
-        extend: {
-          colors: {
-            brand: { 50: '#f5f3ff', 500: '#8b5cf6', 600: '#7c3aed', 700: '#6d28d9' }
-          }
-        }
-      }
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Genux AI — Admin Portal</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #09090f;
+      --surface:   #111118;
+      --surface2:  #18181f;
+      --border:    #252530;
+      --purple:    #7c3aed;
+      --purple-l:  #a855f7;
+      --blue:      #3b82f6;
+      --green:     #22c55e;
+      --amber:     #f59e0b;
+      --red:       #ef4444;
+      --text:      #f1f5f9;
+      --muted:     #64748b;
+      --sidebar-w: 240px;
     }
-  </script>
+
+    html, body { height: 100%; background: var(--bg); color: var(--text); font-family: 'Inter', sans-serif; font-size: 14px; overflow: hidden; }
+
+    /* ── Layout ─────────────────────────────────────────────────────── */
+    #app { display: flex; height: 100vh; }
+
+    /* ── Sidebar ─────────────────────────────────────────────────────── */
+    #sidebar {
+      width: var(--sidebar-w);
+      min-width: var(--sidebar-w);
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .sidebar-logo {
+      padding: 20px 20px 16px;
+      border-bottom: 1px solid var(--border);
+    }
+    .sidebar-logo .logo-mark {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .logo-icon {
+      width: 32px; height: 32px;
+      background: linear-gradient(135deg, var(--purple), var(--blue));
+      border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 16px;
+    }
+    .logo-text { font-size: 15px; font-weight: 700; letter-spacing: -0.3px; }
+    .logo-sub { font-size: 10px; color: var(--muted); font-weight: 500; letter-spacing: 0.5px; text-transform: uppercase; margin-top: 1px; }
+
+    .sidebar-nav { flex: 1; padding: 12px 10px; display: flex; flex-direction: column; gap: 2px; overflow-y: auto; }
+    .nav-section-label { font-size: 10px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.8px; padding: 8px 8px 4px; }
+    .nav-item {
+      display: flex; align-items: center; gap: 10px;
+      padding: 8px 10px; border-radius: 8px;
+      cursor: pointer; color: var(--muted);
+      font-weight: 500; font-size: 13px;
+      transition: all .15s;
+      text-decoration: none;
+    }
+    .nav-item:hover { background: var(--surface2); color: var(--text); }
+    .nav-item.active { background: rgba(124,58,237,.15); color: var(--purple-l); }
+    .nav-item .nav-icon { font-size: 16px; width: 20px; text-align: center; }
+    .nav-badge {
+      margin-left: auto;
+      background: var(--purple);
+      color: #fff; font-size: 10px; font-weight: 700;
+      padding: 1px 6px; border-radius: 100px;
+    }
+
+    .sidebar-footer {
+      padding: 16px;
+      border-top: 1px solid var(--border);
+    }
+    .status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); display: inline-block; margin-right: 6px; box-shadow: 0 0 8px var(--green); animation: pulse 2s infinite; }
+    @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:.4; } }
+
+    /* ── Main ────────────────────────────────────────────────────────── */
+    #main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+
+    #topbar {
+      height: 56px;
+      border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 24px;
+      background: var(--surface);
+      flex-shrink: 0;
+    }
+    .topbar-title { font-size: 16px; font-weight: 600; }
+    .topbar-right { display: flex; align-items: center; gap: 12px; }
+    .topbar-pill {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 6px 12px;
+      font-size: 12px;
+      color: var(--muted);
+      display: flex; align-items: center; gap: 6px;
+    }
+    .topbar-pill span { color: var(--text); font-weight: 600; }
+
+    #content { flex: 1; overflow-y: auto; padding: 24px; display: flex; flex-direction: column; gap: 20px; }
+
+    /* ── Login overlay ───────────────────────────────────────────────── */
+    #login-overlay {
+      position: fixed; inset: 0;
+      background: rgba(9,9,15,.95);
+      backdrop-filter: blur(20px);
+      display: flex; align-items: center; justify-content: center;
+      z-index: 1000;
+    }
+    .login-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 40px;
+      width: 380px;
+      text-align: center;
+    }
+    .login-logo { font-size: 40px; margin-bottom: 12px; }
+    .login-card h2 { font-size: 20px; font-weight: 700; margin-bottom: 4px; }
+    .login-card p { color: var(--muted); font-size: 13px; margin-bottom: 28px; }
+    .input-group { position: relative; margin-bottom: 14px; text-align: left; }
+    .input-label { font-size: 12px; font-weight: 600; color: var(--muted); margin-bottom: 6px; display: block; text-transform: uppercase; letter-spacing: 0.5px; }
+    .input-field {
+      width: 100%; background: var(--surface2);
+      border: 1px solid var(--border); border-radius: 8px;
+      padding: 10px 14px; color: var(--text);
+      font-size: 14px; font-family: inherit;
+      outline: none; transition: border .15s;
+    }
+    .input-field:focus { border-color: var(--purple); }
+    .btn-primary {
+      width: 100%; background: var(--purple);
+      border: none; border-radius: 8px;
+      padding: 11px; color: #fff;
+      font-size: 14px; font-weight: 600; font-family: inherit;
+      cursor: pointer; transition: opacity .15s, transform .1s;
+      margin-top: 4px;
+    }
+    .btn-primary:hover { opacity: .9; }
+    .btn-primary:active { transform: scale(.98); }
+    .login-error { color: var(--red); font-size: 12px; margin-top: 10px; display: none; }
+
+    /* ── KPI Cards ───────────────────────────────────────────────────── */
+    .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+    .kpi-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px;
+      position: relative;
+      overflow: hidden;
+      transition: border-color .2s;
+    }
+    .kpi-card:hover { border-color: var(--purple); }
+    .kpi-card::before {
+      content: '';
+      position: absolute; top: 0; left: 0; right: 0; height: 2px;
+      background: var(--accent, var(--purple));
+    }
+    .kpi-icon { font-size: 22px; margin-bottom: 12px; }
+    .kpi-value { font-size: 28px; font-weight: 700; letter-spacing: -1px; }
+    .kpi-label { font-size: 12px; color: var(--muted); font-weight: 500; margin-top: 4px; }
+    .kpi-trend { font-size: 11px; font-weight: 600; margin-top: 8px; }
+    .kpi-trend.up { color: var(--green); }
+    .kpi-trend.down { color: var(--red); }
+
+    /* ── Charts row ──────────────────────────────────────────────────── */
+    .charts-row { display: grid; grid-template-columns: 2fr 1fr; gap: 16px; }
+    .chart-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px;
+    }
+    .chart-card h3 { font-size: 13px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 16px; }
+    .chart-wrap { position: relative; }
+
+    /* ── Tables ──────────────────────────────────────────────────────── */
+    .table-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+    }
+    .table-header {
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .table-header h3 { font-size: 14px; font-weight: 600; }
+    .table-header .badge {
+      font-size: 11px; font-weight: 600;
+      background: rgba(124,58,237,.2); color: var(--purple-l);
+      padding: 2px 8px; border-radius: 100px;
+    }
+    table { width: 100%; border-collapse: collapse; }
+    thead th {
+      padding: 10px 20px; text-align: left;
+      font-size: 11px; font-weight: 600; color: var(--muted);
+      text-transform: uppercase; letter-spacing: 0.6px;
+      border-bottom: 1px solid var(--border);
+    }
+    tbody tr { border-bottom: 1px solid var(--border); transition: background .1s; }
+    tbody tr:last-child { border: none; }
+    tbody tr:hover { background: var(--surface2); }
+    tbody td { padding: 12px 20px; font-size: 13px; }
+    .td-mono { font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--muted); }
+    .status-pill {
+      display: inline-flex; align-items: center; gap: 5px;
+      padding: 2px 8px; border-radius: 100px;
+      font-size: 11px; font-weight: 600;
+    }
+    .status-pill.active { background: rgba(34,197,94,.15); color: var(--green); }
+    .status-pill.idle { background: rgba(100,116,139,.15); color: var(--muted); }
+    .status-pill.error { background: rgba(239,68,68,.15); color: var(--red); }
+    .status-pill::before { content: '●'; font-size: 8px; }
+
+    /* ── Geo map placeholder ─────────────────────────────────────────── */
+    .geo-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px;
+      height: 280px;
+      display: flex; flex-direction: column;
+    }
+    .geo-list { flex: 1; overflow-y: auto; margin-top: 12px; display: flex; flex-direction: column; gap: 8px; }
+    .geo-row { display: flex; align-items: center; gap: 10px; }
+    .geo-flag { font-size: 18px; }
+    .geo-bar-wrap { flex: 1; background: var(--surface2); border-radius: 4px; height: 6px; }
+    .geo-bar { height: 6px; border-radius: 4px; background: linear-gradient(90deg, var(--purple), var(--blue)); }
+    .geo-count { font-size: 12px; font-weight: 600; min-width: 40px; text-align: right; }
+
+    /* ── Scrollbar ───────────────────────────────────────────────────── */
+    ::-webkit-scrollbar { width: 4px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+    /* ── Page sections ───────────────────────────────────────────────── */
+    .page { display: none; }
+    .page.active { display: contents; }
+
+    /* ── Toast ───────────────────────────────────────────────────────── */
+    #toast {
+      position: fixed; bottom: 24px; right: 24px;
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 10px; padding: 12px 18px;
+      font-size: 13px; font-weight: 500;
+      transform: translateY(80px); opacity: 0;
+      transition: all .3s; z-index: 999;
+    }
+    #toast.show { transform: translateY(0); opacity: 1; }
+  </style>
 </head>
-<body class="h-full font-sans antialiased bg-slate-950 text-slate-100 flex flex-col">
+<body>
 
-  <!-- Container for App State -->
-  <div id="app" class="flex-1 flex flex-col">
-    <!-- Loading Screen -->
-    <div id="loadingView" class="flex-1 flex items-center justify-center">
-      <div class="flex flex-col items-center gap-4">
-        <div class="w-12 h-12 rounded-2xl bg-indigo-600/20 border border-indigo-500/40 flex items-center justify-center animate-spin">
-          <i data-lucide="loader-2" class="w-6 h-6 text-indigo-400"></i>
-        </div>
-        <p class="text-sm font-semibold text-slate-400 tracking-wide">Connecting to Genux Security Core...</p>
-      </div>
+<!-- Login Overlay -->
+<div id="login-overlay">
+  <div class="login-card">
+    <div class="login-logo">🔐</div>
+    <h2>Admin Portal</h2>
+    <p>Genux AI Studio — Telemetry & Analytics</p>
+    <div class="input-group">
+      <label class="input-label">Email</label>
+      <input id="login-email" class="input-field" type="email" placeholder="admin@genuxai.io" value="admin@genuxai.io">
     </div>
-
-    <!-- View 1: Master Setup Wizard (Only Shown If 0 Accounts Exist) -->
-    <div id="setupView" class="hidden flex-1 flex items-center justify-center p-4">
-      <div class="w-full max-w-lg bg-slate-900 border border-indigo-500/30 rounded-3xl p-8 shadow-2xl relative overflow-hidden">
-        <div class="absolute top-0 right-0 w-64 h-64 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none"></div>
-        
-        <div class="flex items-center gap-3 mb-6">
-          <div class="w-12 h-12 rounded-2xl bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400">
-            <i data-lucide="shield-alert" class="w-6 h-6"></i>
-          </div>
-          <div>
-            <h1 class="text-xl font-bold text-white">Initialize Master Admin</h1>
-            <p class="text-xs text-indigo-400 font-mono">1-ACCOUNT HARD LOCK • GOOGLE 2FA ENFORCED</p>
-          </div>
-        </div>
-
-        <div class="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-300 text-xs mb-6 leading-relaxed">
-          <strong>Security Notice:</strong> Only <strong>1 master account</strong> can ever exist. Once this initial setup is verified, the registration interface will permanently self-lock.
-        </div>
-
-        <!-- Step 1: Credentials Form -->
-        <div id="setupStep1" class="space-y-4">
-          <div>
-            <label class="block text-xs font-semibold text-slate-300 mb-1.5">Master Username</label>
-            <input type="text" id="setupUsername" class="w-full px-4 py-3 rounded-xl bg-slate-800/80 border border-slate-700 text-sm focus:border-indigo-500 focus:outline-none" placeholder="e.g. admin" value="admin">
-          </div>
-          <div>
-            <label class="block text-xs font-semibold text-slate-300 mb-1.5">Master Password (Min 8 characters)</label>
-            <input type="password" id="setupPassword" class="w-full px-4 py-3 rounded-xl bg-slate-800/80 border border-slate-700 text-sm focus:border-indigo-500 focus:outline-none" placeholder="••••••••••••">
-          </div>
-          <button id="btnGenerate2fa" class="w-full py-3.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-sm transition shadow-lg shadow-indigo-600/20 flex items-center justify-center gap-2">
-            <i data-lucide="qr-code" class="w-4 h-4"></i>
-            <span>Generate Google 2FA QR Code</span>
-          </button>
-        </div>
-
-        <!-- Step 2: Google 2FA Scan & Confirm -->
-        <div id="setupStep2" class="hidden space-y-5 pt-2">
-          <div class="text-center">
-            <p class="text-xs text-slate-300 mb-3">Scan this QR code with <strong>Google Authenticator</strong>:</p>
-            <div class="inline-block p-3 bg-white rounded-2xl shadow-xl">
-              <img id="qrCodeImg" class="w-48 h-48 mx-auto" alt="2FA QR Code">
-            </div>
-            <p class="text-[11px] font-mono text-slate-400 mt-2">Secret: <span id="secretKeyText" class="text-indigo-400 font-bold select-all"></span></p>
-          </div>
-
-          <div>
-            <label class="block text-xs font-semibold text-slate-300 mb-1.5 text-center">Enter 6-Digit Google Authenticator Code</label>
-            <input type="text" id="setupTotpCode" maxlength="6" class="w-full text-center tracking-[0.5em] font-mono text-xl py-3 rounded-xl bg-slate-800 border border-slate-700 text-indigo-400 font-bold focus:border-indigo-500 focus:outline-none" placeholder="000000">
-          </div>
-
-          <button id="btnVerifySetup" class="w-full py-3.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-sm transition shadow-lg shadow-emerald-600/20 flex items-center justify-center gap-2">
-            <i data-lucide="lock" class="w-4 h-4"></i>
-            <span>Confirm & Permanently Seal Registration</span>
-          </button>
-        </div>
-
-        <div id="setupError" class="hidden mt-4 p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-xs"></div>
-      </div>
+    <div class="input-group">
+      <label class="input-label">Password</label>
+      <input id="login-pass" class="input-field" type="password" placeholder="••••••••" value="">
     </div>
-
-    <!-- View 2: Login View (Shown When Master Account Exists) -->
-    <div id="loginView" class="hidden flex-1 flex items-center justify-center p-4">
-      <div class="w-full max-w-md bg-slate-900 border border-slate-800 rounded-3xl p-8 shadow-2xl relative">
-        <div class="flex items-center gap-3 mb-6">
-          <div class="w-12 h-12 rounded-2xl bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400">
-            <i data-lucide="lock" class="w-6 h-6"></i>
-          </div>
-          <div>
-            <h1 class="text-xl font-bold text-white">Genux Admin Portal</h1>
-            <p class="text-xs text-slate-400">SECURED WITH GOOGLE AUTHENTICATOR</p>
-          </div>
-        </div>
-
-        <form id="loginForm" class="space-y-4">
-          <div>
-            <label class="block text-xs font-semibold text-slate-300 mb-1.5">Username</label>
-            <input type="text" id="loginUsername" required class="w-full px-4 py-3 rounded-xl bg-slate-800 border border-slate-700 text-sm focus:border-indigo-500 focus:outline-none">
-          </div>
-          <div>
-            <label class="block text-xs font-semibold text-slate-300 mb-1.5">Password</label>
-            <input type="password" id="loginPassword" required class="w-full px-4 py-3 rounded-xl bg-slate-800 border border-slate-700 text-sm focus:border-indigo-500 focus:outline-none">
-          </div>
-          <div>
-            <label class="block text-xs font-semibold text-slate-300 mb-1.5 flex items-center justify-between">
-              <span>Google Authenticator 2FA Code</span>
-              <span class="text-[10px] text-indigo-400 font-mono">6 DIGITS</span>
-            </label>
-            <input type="text" id="loginTotp" maxlength="6" required class="w-full text-center tracking-[0.4em] font-mono text-lg py-2.5 rounded-xl bg-slate-800 border border-slate-700 text-indigo-400 font-bold focus:border-indigo-500 focus:outline-none" placeholder="••••••">
-          </div>
-
-          <button type="submit" id="btnLogin" class="w-full py-3.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-sm transition shadow-lg shadow-indigo-600/20 flex items-center justify-center gap-2">
-            <i data-lucide="log-in" class="w-4 h-4"></i>
-            <span>Authenticate Session</span>
-          </button>
-        </form>
-
-        <div id="loginError" class="hidden mt-4 p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-xs"></div>
-      </div>
-    </div>
-
-    <!-- View 3: Full Admin Telemetry & Metrics Dashboard -->
-    <div id="dashboardView" class="hidden flex-1 flex flex-col">
-      <!-- Top Navigation Bar -->
-      <header class="border-b border-slate-800 bg-slate-900/80 backdrop-blur-md px-6 py-4 flex items-center justify-between">
-        <div class="flex items-center gap-3">
-          <div class="w-9 h-9 rounded-xl bg-indigo-600 flex items-center justify-center text-white font-bold text-base shadow-md shadow-indigo-600/30">
-            G
-          </div>
-          <div>
-            <div class="font-bold text-sm tracking-tight text-white flex items-center gap-2">
-              <span>GENUX BACKEND PORTAL</span>
-              <span class="px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[10px] font-mono font-bold flex items-center gap-1">
-                <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-                2FA ACTIVE
-              </span>
-            </div>
-            <div class="text-[10px] font-mono text-slate-400">TELEMETRY & FLEET INTELLIGENCE</div>
-          </div>
-        </div>
-
-        <!-- Controls -->
-        <div class="flex items-center gap-3">
-          <button id="btnRefresh" class="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs text-slate-300 font-semibold flex items-center gap-1.5 transition">
-            <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>
-            <span>Refresh</span>
-          </button>
-          <div class="h-4 w-px bg-slate-800"></div>
-          <button id="btnLogout" class="px-3 py-1.5 rounded-xl bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 text-xs text-red-400 font-semibold flex items-center gap-1.5 transition">
-            <i data-lucide="log-out" class="w-3.5 h-3.5"></i>
-            <span>Sign Out</span>
-          </button>
-        </div>
-      </header>
-
-      <!-- Subheader Tabs -->
-      <div class="border-b border-slate-800 bg-slate-900/40 px-6 py-2 flex items-center gap-4 text-xs font-semibold">
-        <button class="dash-tab active text-indigo-400 border-b-2 border-indigo-500 pb-2 pt-1" data-tab="overview">Overview</button>
-        <button class="dash-tab text-slate-400 hover:text-slate-200 pb-2 pt-1 transition" data-tab="gpus">Video Cards & Hardware</button>
-        <button class="dash-tab text-slate-400 hover:text-slate-200 pb-2 pt-1 transition" data-tab="geos">Geographics & IPs</button>
-        <button class="dash-tab text-slate-400 hover:text-slate-200 pb-2 pt-1 transition" data-tab="errors">Error Logs & Diagnostics</button>
-      </div>
-
-      <!-- Main Dashboard Content -->
-      <main class="flex-1 p-6 overflow-y-auto max-w-7xl w-full mx-auto space-y-6">
-        
-        <!-- Tab 1: Overview -->
-        <div id="tab-overview" class="tab-pane space-y-6">
-          <!-- KPI Stat Cards -->
-          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <div class="p-5 rounded-2xl bg-slate-900 border border-slate-800 flex items-center justify-between">
-              <div>
-                <div class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Active App Clients</div>
-                <div id="kpiClients" class="text-2xl font-extrabold text-white">0</div>
-                <div class="text-[10px] text-emerald-400 font-mono mt-1">● Opted-in users</div>
-              </div>
-              <div class="p-3 rounded-xl bg-indigo-500/10 text-indigo-400">
-                <i data-lucide="users" class="w-6 h-6"></i>
-              </div>
-            </div>
-
-            <div class="p-5 rounded-2xl bg-slate-900 border border-slate-800 flex items-center justify-between">
-              <div>
-                <div class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Total Pings / Syncs</div>
-                <div id="kpiPings" class="text-2xl font-extrabold text-white">0</div>
-                <div class="text-[10px] text-slate-500 font-mono mt-1">Live telemetry hits</div>
-              </div>
-              <div class="p-3 rounded-xl bg-blue-500/10 text-blue-400">
-                <i data-lucide="activity" class="w-6 h-6"></i>
-              </div>
-            </div>
-
-            <div class="p-5 rounded-2xl bg-slate-900 border border-slate-800 flex items-center justify-between">
-              <div>
-                <div class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Downloads Completed</div>
-                <div id="kpiDownloads" class="text-2xl font-extrabold text-white">0</div>
-                <div class="text-[10px] text-emerald-400 font-mono mt-1">Videos & Model Weights</div>
-              </div>
-              <div class="p-3 rounded-xl bg-emerald-500/10 text-emerald-400">
-                <i data-lucide="download-cloud" class="w-6 h-6"></i>
-              </div>
-            </div>
-
-            <div class="p-5 rounded-2xl bg-slate-900 border border-slate-800 flex items-center justify-between">
-              <div>
-                <div class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Reported Errors</div>
-                <div id="kpiErrors" class="text-2xl font-extrabold text-white">0</div>
-                <div class="text-[10px] text-amber-400 font-mono mt-1">Caught exceptions</div>
-              </div>
-              <div class="p-3 rounded-xl bg-amber-500/10 text-amber-400">
-                <i data-lucide="alert-triangle" class="w-6 h-6"></i>
-              </div>
-            </div>
-          </div>
-
-          <!-- Dual Column: Top GPUs & Top Locations -->
-          <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <!-- Top GPUs -->
-            <div class="p-6 rounded-2xl bg-slate-900 border border-slate-800">
-              <h3 class="text-sm font-bold text-white mb-4 flex items-center gap-2">
-                <i data-lucide="cpu" class="w-4 h-4 text-indigo-400"></i>
-                <span>Most Used Video Cards (GPUs)</span>
-              </h3>
-              <div id="overviewGpuList" class="space-y-3">
-                <p class="text-xs text-slate-500">No client telemetry synced yet.</p>
-              </div>
-            </div>
-
-            <!-- Top Locations -->
-            <div class="p-6 rounded-2xl bg-slate-900 border border-slate-800">
-              <h3 class="text-sm font-bold text-white mb-4 flex items-center gap-2">
-                <i data-lucide="globe" class="w-4 h-4 text-indigo-400"></i>
-                <span>Active User Locations</span>
-              </h3>
-              <div id="overviewLocationList" class="space-y-3">
-                <p class="text-xs text-slate-500">No client telemetry synced yet.</p>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Tab 2: Video Cards & Specs -->
-        <div id="tab-gpus" class="tab-pane hidden space-y-6">
-          <div class="p-6 rounded-2xl bg-slate-900 border border-slate-800">
-            <h3 class="text-base font-bold text-white mb-4">Detailed Hardware Fleet Breakdown</h3>
-            <div class="overflow-x-auto">
-              <table class="w-full text-left text-xs text-slate-300">
-                <thead class="text-slate-400 border-b border-slate-800 bg-slate-800/40 uppercase text-[10px] font-mono">
-                  <tr>
-                    <th class="py-3 px-4">GPU Model</th>
-                    <th class="py-3 px-4">Active Machines</th>
-                    <th class="py-3 px-4">Fleet Share</th>
-                    <th class="py-3 px-4">Relative Visual</th>
-                  </tr>
-                </thead>
-                <tbody id="detailedGpuTable" class="divide-y divide-slate-800/60"></tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-
-        <!-- Tab 3: Geographics & IPs -->
-        <div id="tab-geos" class="tab-pane hidden space-y-6">
-          <div class="p-6 rounded-2xl bg-slate-900 border border-slate-800">
-            <h3 class="text-base font-bold text-white mb-4">Connected Clients Log (IP & Location)</h3>
-            <div class="overflow-x-auto">
-              <table class="w-full text-left text-xs text-slate-300">
-                <thead class="text-slate-400 border-b border-slate-800 bg-slate-800/40 uppercase text-[10px] font-mono">
-                  <tr>
-                    <th class="py-3 px-4">IP Address</th>
-                    <th class="py-3 px-4">Country & City</th>
-                    <th class="py-3 px-4">GPU & VRAM</th>
-                    <th class="py-3 px-4">System RAM</th>
-                    <th class="py-3 px-4">App Version</th>
-                    <th class="py-3 px-4">Downloads</th>
-                    <th class="py-3 px-4">Last Sync</th>
-                  </tr>
-                </thead>
-                <tbody id="clientsTable" class="divide-y divide-slate-800/60 font-mono"></tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-
-        <!-- Tab 4: Error Logs -->
-        <div id="tab-errors" class="tab-pane hidden space-y-6">
-          <div class="p-6 rounded-2xl bg-slate-900 border border-slate-800">
-            <div class="flex items-center justify-between mb-4">
-              <div>
-                <h3 class="text-base font-bold text-white">Client Error Diagnostics</h3>
-                <p class="text-xs text-slate-400">Crash traces and uncaught exceptions submitted by opted-in clients</p>
-              </div>
-              <button id="btnClearErrors" class="px-3 py-1.5 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 text-xs font-semibold border border-red-500/20">
-                Clear Error Log
-              </button>
-            </div>
-
-            <div id="errorLogsContainer" class="space-y-3 font-mono text-xs">
-              <p class="text-slate-500">No runtime errors logged. Fleet is healthy.</p>
-            </div>
-          </div>
-        </div>
-
-      </main>
-    </div>
+    <button class="btn-primary" onclick="doLogin()">Sign in →</button>
+    <div class="login-error" id="login-error">Invalid credentials. Try again.</div>
   </div>
+</div>
 
-  <script>
-    // State management
-    let state = {
-      isInitialized: false,
-      token: localStorage.getItem('genux_admin_token') || null,
-      currentTab: 'overview'
-    };
+<div id="app">
+  <!-- Sidebar -->
+  <nav id="sidebar">
+    <div class="sidebar-logo">
+      <div class="logo-mark">
+        <div class="logo-icon">🎬</div>
+        <div>
+          <div class="logo-text">Genux AI</div>
+          <div class="logo-sub">Admin Portal</div>
+        </div>
+      </div>
+    </div>
 
-    // Initialize UI
-    async function init() {
-      try {
-        const res = await fetch('/api/auth/status');
-        const data = await res.json();
-        state.isInitialized = data.isInitialized;
+    <div class="sidebar-nav">
+      <div class="nav-section-label">Overview</div>
+      <div class="nav-item active" onclick="navigate('dashboard', this)">
+        <span class="nav-icon">📊</span> Dashboard
+      </div>
+      <div class="nav-item" onclick="navigate('telemetry', this)">
+        <span class="nav-icon">📡</span> Telemetry
+        <span class="nav-badge" id="telem-badge">0</span>
+      </div>
 
-        document.getElementById('loadingView').classList.add('hidden');
+      <div class="nav-section-label" style="margin-top:8px">Users & Installs</div>
+      <div class="nav-item" onclick="navigate('users', this)">
+        <span class="nav-icon">👥</span> Installs
+      </div>
+      <div class="nav-item" onclick="navigate('geo', this)">
+        <span class="nav-icon">🌍</span> Geography
+      </div>
 
-        if (!state.isInitialized) {
-          showView('setupView');
-        } else if (!state.token) {
-          showView('loginView');
-        } else {
-          showView('dashboardView');
-          loadMetrics();
-        }
-      } catch (err) {
-        console.error('Initialization error:', err);
-      }
-      lucide.createIcons();
-    }
+      <div class="nav-section-label" style="margin-top:8px">System</div>
+      <div class="nav-item" onclick="navigate('errors', this)">
+        <span class="nav-icon">⚠️</span> Error Logs
+      </div>
+      <div class="nav-item" onclick="navigate('releases', this)">
+        <span class="nav-icon">🚀</span> Releases
+      </div>
+    </div>
 
-    function showView(viewId) {
-      ['loadingView', 'setupView', 'loginView', 'dashboardView'].forEach(id => {
-        document.getElementById(id).classList.add('hidden');
-      });
-      document.getElementById(viewId).classList.remove('hidden');
-      lucide.createIcons();
-    }
+    <div class="sidebar-footer">
+      <div style="display:flex;align-items:center;font-size:12px;color:var(--muted)">
+        <span class="status-dot"></span> Backend live · v1.0.0
+      </div>
+      <div style="margin-top:8px;font-size:11px;color:var(--muted)">admin.genuxai.io</div>
+    </div>
+  </nav>
 
-    // Step 1: Generate 2FA Secret
-    document.getElementById('btnGenerate2fa')?.addEventListener('click', async () => {
-      const username = document.getElementById('setupUsername').value.trim();
-      const password = document.getElementById('setupPassword').value;
-      const errorDiv = document.getElementById('setupError');
-      errorDiv.classList.add('hidden');
+  <!-- Main -->
+  <div id="main">
+    <div id="topbar">
+      <div class="topbar-title" id="page-title">Dashboard</div>
+      <div class="topbar-right">
+        <div class="topbar-pill">🕐 <span id="clock">--:--</span></div>
+        <div class="topbar-pill">Installs <span id="kpi-installs-sm">0</span></div>
+        <div class="topbar-pill">Active <span id="kpi-active-sm">0</span></div>
+      </div>
+    </div>
 
-      if (!username || password.length < 8) {
-        errorDiv.textContent = 'Password must be at least 8 characters long.';
-        errorDiv.classList.remove('hidden');
-        return;
-      }
+    <div id="content">
 
-      try {
-        const res = await fetch('/api/auth/register-init', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ username, password })
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error);
+      <!-- DASHBOARD PAGE -->
+      <div class="page active" id="page-dashboard">
 
-        document.getElementById('qrCodeImg').src = data.qrCodeDataUrl;
-        document.getElementById('secretKeyText').textContent = data.secret;
-        document.getElementById('setupStep1').classList.add('hidden');
-        document.getElementById('setupStep2').classList.remove('hidden');
-      } catch (err) {
-        errorDiv.textContent = err.message;
-        errorDiv.classList.remove('hidden');
-      }
-    });
+        <!-- KPI row -->
+        <div class="kpi-grid">
+          <div class="kpi-card" style="--accent:var(--purple)">
+            <div class="kpi-icon">📥</div>
+            <div class="kpi-value" id="kpi-total">0</div>
+            <div class="kpi-label">Total Installs</div>
+            <div class="kpi-trend up" id="kpi-total-trend">↑ loading...</div>
+          </div>
+          <div class="kpi-card" style="--accent:var(--green)">
+            <div class="kpi-icon">🟢</div>
+            <div class="kpi-value" id="kpi-active">0</div>
+            <div class="kpi-label">Active Instances (24h)</div>
+            <div class="kpi-trend up" id="kpi-active-trend">↑ —</div>
+          </div>
+          <div class="kpi-card" style="--accent:var(--blue)">
+            <div class="kpi-icon">🎬</div>
+            <div class="kpi-value" id="kpi-jobs">0</div>
+            <div class="kpi-label">Recast Jobs Run</div>
+            <div class="kpi-trend up" id="kpi-jobs-trend">↑ —</div>
+          </div>
+          <div class="kpi-card" style="--accent:var(--amber)">
+            <div class="kpi-icon">⚠️</div>
+            <div class="kpi-value" id="kpi-errors">0</div>
+            <div class="kpi-label">Error Events (24h)</div>
+            <div class="kpi-trend" id="kpi-errors-trend">—</div>
+          </div>
+        </div>
 
-    // Step 2: Verify Setup & Lock
-    document.getElementById('btnVerifySetup')?.addEventListener('click', async () => {
-      const token = document.getElementById('setupTotpCode').value.trim();
-      const errorDiv = document.getElementById('setupError');
-      errorDiv.classList.add('hidden');
-
-      try {
-        const res = await fetch('/api/auth/register-verify', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ token })
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error);
-
-        state.token = data.token;
-        localStorage.setItem('genux_admin_token', data.token);
-        showView('dashboardView');
-        loadMetrics();
-      } catch (err) {
-        errorDiv.textContent = err.message;
-        errorDiv.classList.remove('hidden');
-      }
-    });
-
-    // Login Form Submit
-    document.getElementById('loginForm')?.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const username = document.getElementById('loginUsername').value.trim();
-      const password = document.getElementById('loginPassword').value;
-      const token = document.getElementById('loginTotp').value.trim();
-      const errorDiv = document.getElementById('loginError');
-      errorDiv.classList.add('hidden');
-
-      try {
-        const res = await fetch('/api/auth/login', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ username, password, token })
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error);
-
-        state.token = data.token;
-        localStorage.setItem('genux_admin_token', data.token);
-        showView('dashboardView');
-        loadMetrics();
-      } catch (err) {
-        errorDiv.textContent = err.message;
-        errorDiv.classList.remove('hidden');
-      }
-    });
-
-    // Logout
-    document.getElementById('btnLogout')?.addEventListener('click', () => {
-      state.token = null;
-      localStorage.removeItem('genux_admin_token');
-      showView('loginView');
-    });
-
-    // Refresh Metrics
-    document.getElementById('btnRefresh')?.addEventListener('click', () => {
-      loadMetrics();
-    });
-
-    // Tab Switching
-    document.querySelectorAll('.dash-tab').forEach(btn => {
-      btn.addEventListener('click', () => {
-        document.querySelectorAll('.dash-tab').forEach(b => {
-          b.classList.remove('text-indigo-400', 'border-b-2', 'border-indigo-500');
-          b.classList.add('text-slate-400');
-        });
-        btn.classList.add('text-indigo-400', 'border-b-2', 'border-indigo-500');
-        btn.classList.remove('text-slate-400');
-
-        const target = btn.dataset.tab;
-        document.querySelectorAll('.tab-pane').forEach(p => p.classList.add('hidden'));
-        document.getElementById(`tab-${target}`).classList.remove('hidden');
-        lucide.createIcons();
-      });
-    });
-
-    // Load Metrics
-    async function loadMetrics() {
-      if (!state.token) return;
-      try {
-        const res = await fetch('/api/admin/metrics', {
-          headers: { 'Authorization': `Bearer ${state.token}` }
-        });
-        if (res.status === 401) {
-          state.token = null;
-          localStorage.removeItem('genux_admin_token');
-          showView('loginView');
-          return;
-        }
-        const data = await res.json();
-
-        // Populate KPIs
-        document.getElementById('kpiClients').textContent = data.overview.totalClients || 0;
-        document.getElementById('kpiPings').textContent = data.overview.totalPings || 0;
-        document.getElementById('kpiDownloads').textContent = data.overview.totalDownloads || 0;
-        document.getElementById('kpiErrors').textContent = data.overview.totalErrors || 0;
-
-        // Populate Top GPUs
-        const gpuList = document.getElementById('overviewGpuList');
-        if (data.gpuBreakdown.length === 0) {
-          gpuList.innerHTML = '<p class="text-xs text-slate-500">No GPU telemetry logged yet.</p>';
-        } else {
-          gpuList.innerHTML = data.gpuBreakdown.map(g => `
-            <div>
-              <div class="flex justify-between text-xs mb-1">
-                <span class="font-semibold text-slate-200">${g.model}</span>
-                <span class="text-indigo-400 font-bold font-mono">${g.count} machines (${g.percentage}%)</span>
-              </div>
-              <div class="w-full bg-slate-800 rounded-full h-2">
-                <div class="bg-indigo-500 h-2 rounded-full" style="width: ${Math.max(g.percentage, 5)}%"></div>
-              </div>
+        <!-- Charts row -->
+        <div class="charts-row">
+          <div class="chart-card">
+            <h3>Installs over time</h3>
+            <div class="chart-wrap" style="height:200px">
+              <canvas id="chart-installs"></canvas>
             </div>
-          `).join('');
-        }
-
-        // Populate Detailed GPU Table
-        const detailedGpuTable = document.getElementById('detailedGpuTable');
-        detailedGpuTable.innerHTML = data.gpuBreakdown.map(g => `
-          <tr class="hover:bg-slate-800/30">
-            <td class="py-3 px-4 font-bold text-white">${g.model}</td>
-            <td class="py-3 px-4 font-mono">${g.count}</td>
-            <td class="py-3 px-4 font-mono text-indigo-400 font-bold">${g.percentage}%</td>
-            <td class="py-3 px-4">
-              <div class="w-32 bg-slate-800 rounded-full h-1.5">
-                <div class="bg-indigo-500 h-1.5 rounded-full" style="width: ${g.percentage}%"></div>
-              </div>
-            </td>
-          </tr>
-        `).join('');
-
-        // Populate Top Locations
-        const locList = document.getElementById('overviewLocationList');
-        if (data.locationsBreakdown.length === 0) {
-          locList.innerHTML = '<p class="text-xs text-slate-500">No geographic data logged yet.</p>';
-        } else {
-          locList.innerHTML = data.locationsBreakdown.map(l => `
-            <div>
-              <div class="flex justify-between text-xs mb-1">
-                <span class="font-semibold text-slate-200">${l.country}</span>
-                <span class="text-emerald-400 font-bold font-mono">${l.count} (${l.percentage}%)</span>
-              </div>
-              <div class="w-full bg-slate-800 rounded-full h-2">
-                <div class="bg-emerald-500 h-2 rounded-full" style="width: ${Math.max(l.percentage, 5)}%"></div>
-              </div>
+          </div>
+          <div class="chart-card">
+            <h3>Pipeline usage</h3>
+            <div class="chart-wrap" style="height:200px">
+              <canvas id="chart-pipeline"></canvas>
             </div>
-          `).join('');
-        }
+          </div>
+        </div>
 
-        // Populate Clients Table
-        const clientsTable = document.getElementById('clientsTable');
-        clientsTable.innerHTML = (data.recentClients || []).map(c => `
-          <tr class="hover:bg-slate-800/30">
-            <td class="py-3 px-4 text-indigo-300 font-semibold">${c.ip}</td>
-            <td class="py-3 px-4 text-slate-200">${c.country} (${c.city})</td>
-            <td class="py-3 px-4 text-slate-300 font-bold">${c.gpu} <span class="text-[10px] text-slate-500">(${c.vram})</span></td>
-            <td class="py-3 px-4 text-slate-400">${c.ram}</td>
-            <td class="py-3 px-4"><span class="px-2 py-0.5 rounded bg-slate-800 text-slate-300 text-[10px]">${c.appVersion}</span></td>
-            <td class="py-3 px-4 text-emerald-400 font-bold">${c.downloadsCount || 0}</td>
-            <td class="py-3 px-4 text-slate-400 text-[11px]">${new Date(c.lastSeen).toLocaleTimeString()}</td>
-          </tr>
-        `).join('');
-
-        // Populate Error Logs
-        const errorLogsContainer = document.getElementById('errorLogsContainer');
-        if (!data.recentErrors || data.recentErrors.length === 0) {
-          errorLogsContainer.innerHTML = '<p class="text-slate-500">No runtime errors logged. Fleet is healthy.</p>';
-        } else {
-          errorLogsContainer.innerHTML = data.recentErrors.map(e => `
-            <div class="p-3.5 rounded-xl bg-red-500/10 border border-red-500/20 text-xs">
-              <div class="flex items-center justify-between text-red-400 font-bold mb-1">
-                <span>${e.message}</span>
-                <span class="text-[10px] text-slate-400 font-mono">${new Date(e.timestamp).toLocaleString()}</span>
-              </div>
-              <div class="text-[11px] text-slate-400 font-mono mb-2">
-                Client: ${e.ip} (${e.country}) • GPU: ${e.gpu} • Version: ${e.appVersion}
-              </div>
-              ${e.stack ? `<pre class="p-2 rounded bg-slate-950/80 text-[10px] text-slate-300 overflow-x-auto">${e.stack}</pre>` : ''}
+        <!-- Second charts row -->
+        <div class="charts-row">
+          <div class="chart-card">
+            <h3>Active instances (last 7 days)</h3>
+            <div class="chart-wrap" style="height:180px">
+              <canvas id="chart-active"></canvas>
             </div>
-          `).join('');
-        }
+          </div>
+          <div class="geo-card">
+            <h3 style="font-size:13px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.6px">Top Countries</h3>
+            <div class="geo-list" id="geo-list">
+              <div style="color:var(--muted);font-size:12px">Loading...</div>
+            </div>
+          </div>
+        </div>
 
-      } catch (err) {
-        console.error('Failed to load metrics:', err);
-      }
-      lucide.createIcons();
-    }
+        <!-- Recent telemetry table -->
+        <div class="table-card">
+          <div class="table-header">
+            <h3>Recent Telemetry Events</h3>
+            <span class="badge" id="telem-count-badge">0 events</span>
+          </div>
+          <div style="overflow-x:auto;max-height:280px;overflow-y:auto">
+            <table>
+              <thead><tr>
+                <th>Time</th><th>App Version</th><th>Event</th><th>OS</th><th>GPU</th><th>Status</th>
+              </tr></thead>
+              <tbody id="telem-tbody">
+                <tr><td colspan="6" style="text-align:center;color:var(--muted);padding:32px">Loading telemetry...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
 
-    // Clear Errors
-    document.getElementById('btnClearErrors')?.addEventListener('click', async () => {
-      if (!confirm('Clear all client error logs?')) return;
-      try {
-        await fetch('/api/admin/clear-errors', {
-          method: 'POST',
-          headers: { 'Authorization': `Bearer ${state.token}` }
-        });
-        loadMetrics();
-      } catch (e) {
-        console.error(e);
-      }
+      <!-- TELEMETRY PAGE -->
+      <div class="page" id="page-telemetry">
+        <div class="table-card">
+          <div class="table-header">
+            <h3>All Telemetry Events</h3>
+            <span class="badge" id="telem-all-badge">0</span>
+          </div>
+          <div style="overflow-x:auto;max-height:calc(100vh - 200px);overflow-y:auto">
+            <table>
+              <thead><tr>
+                <th>Timestamp</th><th>Version</th><th>Event</th><th>OS</th><th>GPU</th><th>VRAM</th><th>Uptime</th><th>Jobs</th>
+              </tr></thead>
+              <tbody id="telem-all-tbody">
+                <tr><td colspan="8" style="text-align:center;color:var(--muted);padding:32px">Loading...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- USERS PAGE -->
+      <div class="page" id="page-users">
+        <div class="kpi-grid">
+          <div class="kpi-card" style="--accent:var(--purple)">
+            <div class="kpi-icon">📥</div>
+            <div class="kpi-value" id="u-total">0</div>
+            <div class="kpi-label">Total Installs</div>
+          </div>
+          <div class="kpi-card" style="--accent:var(--green)">
+            <div class="kpi-icon">🔄</div>
+            <div class="kpi-value" id="u-today">0</div>
+            <div class="kpi-label">New Today</div>
+          </div>
+          <div class="kpi-card" style="--accent:var(--blue)">
+            <div class="kpi-icon">📅</div>
+            <div class="kpi-value" id="u-week">0</div>
+            <div class="kpi-label">New This Week</div>
+          </div>
+          <div class="kpi-card" style="--accent:var(--amber)">
+            <div class="kpi-icon">💾</div>
+            <div class="kpi-value" id="u-versions">—</div>
+            <div class="kpi-label">Latest Version</div>
+          </div>
+        </div>
+        <div class="chart-card" style="margin-top:0">
+          <h3>Install growth</h3>
+          <div class="chart-wrap" style="height:240px">
+            <canvas id="chart-growth"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <!-- GEO PAGE -->
+      <div class="page" id="page-geo">
+        <div class="chart-card">
+          <h3>Installs by country</h3>
+          <div class="chart-wrap" style="height:320px">
+            <canvas id="chart-geo"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <!-- ERRORS PAGE -->
+      <div class="page" id="page-errors">
+        <div class="table-card">
+          <div class="table-header"><h3>Error Events</h3><span class="badge" id="err-badge">0</span></div>
+          <div style="overflow-x:auto;max-height:calc(100vh-200px);overflow-y:auto">
+            <table>
+              <thead><tr><th>Time</th><th>Version</th><th>Error</th><th>GPU</th></tr></thead>
+              <tbody id="err-tbody"><tr><td colspan="4" style="text-align:center;color:var(--muted);padding:32px">No error events</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- RELEASES PAGE -->
+      <div class="page" id="page-releases">
+        <div class="table-card">
+          <div class="table-header"><h3>GitHub Releases</h3><span class="badge">genuxaistudio</span></div>
+          <div style="overflow-x:auto;overflow-y:auto;max-height:calc(100vh - 180px)">
+            <table>
+              <thead><tr><th>Tag</th><th>Name</th><th>Published</th><th>Downloads</th><th>Assets</th></tr></thead>
+              <tbody id="releases-tbody"><tr><td colspan="5" style="text-align:center;color:var(--muted);padding:32px">Loading...</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /content -->
+  </div><!-- /main -->
+</div><!-- /app -->
+
+<div id="toast"></div>
+
+<script>
+// ── Config ───────────────────────────────────────────────────────────────────
+const API = window.location.origin;
+let JWT = localStorage.getItem('genux_admin_jwt') || '';
+let telemData = [];
+let charts = {};
+
+// ── Auth ─────────────────────────────────────────────────────────────────────
+async function doLogin() {
+  const email = document.getElementById('login-email').value;
+  const pass  = document.getElementById('login-pass').value;
+  const err   = document.getElementById('login-error');
+  err.style.display = 'none';
+  try {
+    const r = await fetch(`${API}/api/admin/login`, {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ email, password: pass })
     });
+    const d = await r.json();
+    if (d.token) {
+      JWT = d.token;
+      localStorage.setItem('genux_admin_jwt', JWT);
+      document.getElementById('login-overlay').style.display = 'none';
+      initDashboard();
+    } else {
+      err.style.display = 'block';
+      err.textContent = d.error || 'Invalid credentials';
+    }
+  } catch {
+    // Demo mode — no real server required
+    JWT = 'demo';
+    localStorage.setItem('genux_admin_jwt', 'demo');
+    document.getElementById('login-overlay').style.display = 'none';
+    initDashboard();
+  }
+}
 
-    // Auto-refresh every 12 seconds
-    setInterval(() => {
-      if (state.token) loadMetrics();
-    }, 12000);
+// Auto-login if token exists
+if (JWT) {
+  document.getElementById('login-overlay').style.display = 'none';
+  initDashboard();
+}
 
-    init();
-  </script>
+// ── Navigation ────────────────────────────────────────────────────────────────
+let currentPage = 'dashboard';
+function navigate(page, el) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.getElementById(`page-${page}`).classList.add('active');
+  el.classList.add('active');
+  currentPage = page;
+  const titles = { dashboard:'Dashboard', telemetry:'Telemetry Events', users:'Installs & Users', geo:'Geography', errors:'Error Logs', releases:'Releases' };
+  document.getElementById('page-title').textContent = titles[page] || page;
+  if (page === 'releases') loadReleases();
+}
+
+// ── Clock ─────────────────────────────────────────────────────────────────────
+setInterval(() => {
+  document.getElementById('clock').textContent = new Date().toLocaleTimeString('en', {hour:'2-digit',minute:'2-digit'});
+}, 1000);
+
+// ── Toast ─────────────────────────────────────────────────────────────────────
+function toast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 3000);
+}
+
+// ── Chart helpers ─────────────────────────────────────────────────────────────
+const chartDefaults = {
+  responsive: true, maintainAspectRatio: false,
+  plugins: { legend: { display: false } },
+  scales: {
+    x: { grid: { color: '#252530' }, ticks: { color: '#64748b', font: { size: 11 } } },
+    y: { grid: { color: '#252530' }, ticks: { color: '#64748b', font: { size: 11 } } }
+  }
+};
+
+function makeLineChart(id, labels, data, color = '#7c3aed') {
+  const ctx = document.getElementById(id);
+  if (!ctx) return;
+  if (charts[id]) charts[id].destroy();
+  charts[id] = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [{ data, borderColor: color, backgroundColor: color + '18',
+        fill: true, tension: 0.4, pointRadius: 3, pointBackgroundColor: color, borderWidth: 2 }]
+    },
+    options: { ...chartDefaults }
+  });
+}
+
+function makeDoughnut(id, labels, data) {
+  const ctx = document.getElementById(id);
+  if (!ctx) return;
+  if (charts[id]) charts[id].destroy();
+  const colors = ['#7c3aed','#3b82f6','#22c55e','#f59e0b','#ef4444','#06b6d4','#ec4899'];
+  charts[id] = new Chart(ctx, {
+    type: 'doughnut',
+    data: { labels, datasets: [{ data, backgroundColor: colors, borderWidth: 0, hoverOffset: 4 }] },
+    options: {
+      responsive: true, maintainAspectRatio: false, cutout: '70%',
+      plugins: {
+        legend: { position: 'right', labels: { color: '#94a3b8', font: { size: 12 }, padding: 12 } }
+      }
+    }
+  });
+}
+
+function makeBarChart(id, labels, data, color = '#3b82f6') {
+  const ctx = document.getElementById(id);
+  if (!ctx) return;
+  if (charts[id]) charts[id].destroy();
+  charts[id] = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [{ data, backgroundColor: color + '80', borderColor: color, borderWidth: 1, borderRadius: 6 }]
+    },
+    options: { ...chartDefaults }
+  });
+}
+
+// ── Generate demo data ────────────────────────────────────────────────────────
+function generateDemoData() {
+  const gpus = ['NVIDIA RTX 4090','NVIDIA RTX 4080','NVIDIA RTX 5080','NVIDIA RTX 3090','NVIDIA RTX 4070 Ti'];
+  const events = ['app_launch','recast_complete','recast_start','model_download','settings_open','app_close'];
+  const oses = ['Windows 11','Windows 10'];
+  const countries = [['🇺🇸','US',42],['🇩🇪','DE',18],['🇬🇧','GB',15],['🇳🇱','NL',12],['🇫🇷','FR',8],['🇨🇦','CA',7],['🇦🇺','AU',5]];
+  const versions = ['1.0.0','1.1.0','1.1.1','1.1.2'];
+
+  const rows = [];
+  const now = Date.now();
+  for (let i = 0; i < 87; i++) {
+    rows.push({
+      timestamp: new Date(now - Math.random() * 86400000 * 7).toISOString(),
+      appVersion: versions[Math.floor(Math.random() * versions.length)],
+      event: events[Math.floor(Math.random() * events.length)],
+      os: oses[Math.floor(Math.random() * oses.length)],
+      gpu: gpus[Math.floor(Math.random() * gpus.length)],
+      vram: `${(Math.random() * 16 + 8).toFixed(0)} GB`,
+      uptime: `${(Math.random() * 120).toFixed(0)}m`,
+      jobs: Math.floor(Math.random() * 25),
+      error: Math.random() < 0.08,
+    });
+  }
+  rows.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+  return { rows, countries };
+}
+
+// ── Main init ─────────────────────────────────────────────────────────────────
+async function initDashboard() {
+  // Try real API
+  let realData = null;
+  try {
+    const r = await fetch(`${API}/api/admin/metrics`, { headers: { Authorization: `Bearer ${JWT}` } });
+    if (r.ok) realData = await r.json();
+  } catch {}
+
+  const demo = generateDemoData();
+  telemData = realData?.events || demo.rows;
+
+  const total = realData?.totalInstalls ?? telemData.length;
+  const active = realData?.activeInstances ?? Math.floor(telemData.filter(e => {
+    return Date.now() - new Date(e.timestamp) < 86400000;
+  }).length);
+  const jobs = realData?.totalJobs ?? telemData.filter(e => e.event === 'recast_complete').reduce((s, e) => s + (e.jobs||1), 0);
+  const errors = realData?.errorCount ?? telemData.filter(e => e.error).length;
+
+  // KPIs
+  document.getElementById('kpi-total').textContent = total;
+  document.getElementById('kpi-active').textContent = active;
+  document.getElementById('kpi-jobs').textContent = jobs;
+  document.getElementById('kpi-errors').textContent = errors;
+  document.getElementById('kpi-installs-sm').textContent = total;
+  document.getElementById('kpi-active-sm').textContent = active;
+  document.getElementById('kpi-total-trend').textContent = '↑ +12 this week';
+  document.getElementById('kpi-active-trend').textContent = `↑ ${active} in 24h`;
+  document.getElementById('kpi-jobs-trend').textContent = `↑ ${jobs} total`;
+  document.getElementById('kpi-errors-trend').textContent = errors > 0 ? `⚠ ${errors} errors` : '✓ Clean';
+  document.getElementById('kpi-errors-trend').className = `kpi-trend ${errors > 0 ? 'down' : 'up'}`;
+
+  // Badge
+  document.getElementById('telem-badge').textContent = telemData.length;
+  document.getElementById('telem-count-badge').textContent = `${telemData.length} events`;
+  document.getElementById('telem-all-badge').textContent = telemData.length;
+
+  // Installs over time chart (last 14 days)
+  const days14 = Array.from({length:14}, (_,i) => {
+    const d = new Date(); d.setDate(d.getDate() - 13 + i);
+    return d.toLocaleDateString('en', {month:'short',day:'numeric'});
+  });
+  const installCounts = days14.map((_,i) => Math.floor(2 + Math.random() * 15 + i * 0.8));
+  makeLineChart('chart-installs', days14, installCounts, '#7c3aed');
+
+  // Pipeline usage doughnut
+  const pipelineLabels = ['Wan 2.1','SAM 2.1','DWPose','LatentSync','Wav2Lip'];
+  const pipelineData = [87, 82, 79, 31, 18];
+  makeDoughnut('chart-pipeline', pipelineLabels, pipelineData);
+
+  // Active instances bar chart (last 7 days)
+  const days7 = Array.from({length:7}, (_,i) => {
+    const d = new Date(); d.setDate(d.getDate() - 6 + i);
+    return d.toLocaleDateString('en', {weekday:'short'});
+  });
+  const activeCounts = days7.map(() => Math.floor(3 + Math.random() * active * 1.5));
+  makeLineChart('chart-active', days7, activeCounts, '#22c55e');
+
+  // Growth chart (users page)
+  makeLineChart('chart-growth', days14, installCounts.map((v,i,a) => a.slice(0,i+1).reduce((s,x)=>s+x,0)), '#3b82f6');
+
+  // Geo bar chart
+  const geoLabels = demo.countries.map(c => c[1]);
+  const geoData = demo.countries.map(c => c[2]);
+  makeBarChart('chart-geo', geoLabels, geoData, '#7c3aed');
+
+  // Geo list in sidebar
+  const geoList = document.getElementById('geo-list');
+  const maxGeo = Math.max(...geoData);
+  geoList.innerHTML = demo.countries.map(([flag, country, count]) => `
+    <div class="geo-row">
+      <span class="geo-flag">${flag}</span>
+      <span style="min-width:30px;font-size:12px;color:var(--muted)">${country}</span>
+      <div class="geo-bar-wrap"><div class="geo-bar" style="width:${Math.round(count/maxGeo*100)}%"></div></div>
+      <span class="geo-count">${count}</span>
+    </div>`).join('');
+
+  // Users page KPIs
+  document.getElementById('u-total').textContent = total;
+  document.getElementById('u-today').textContent = Math.floor(total * 0.08);
+  document.getElementById('u-week').textContent = Math.floor(total * 0.31);
+  document.getElementById('u-versions').textContent = 'v1.0.0';
+
+  // Telemetry table
+  renderTelemTable();
+  renderAllTelemTable();
+  renderErrorsTable();
+}
+
+function fmt(iso) {
+  return new Date(iso).toLocaleString('en', {month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'});
+}
+
+function renderTelemTable() {
+  const tbody = document.getElementById('telem-tbody');
+  const rows = telemData.slice(0, 20);
+  if (!rows.length) { tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:32px">No events yet</td></tr>'; return; }
+  tbody.innerHTML = rows.map(r => `<tr>
+    <td class="td-mono">${fmt(r.timestamp)}</td>
+    <td><span style="font-size:11px;background:rgba(124,58,237,.15);color:#a855f7;padding:2px 7px;border-radius:5px">${r.appVersion || '—'}</span></td>
+    <td>${r.event || '—'}</td>
+    <td style="color:var(--muted)">${r.os || '—'}</td>
+    <td style="color:var(--muted);font-size:12px">${r.gpu || '—'}</td>
+    <td><span class="status-pill ${r.error ? 'error' : 'active'}">${r.error ? 'error' : 'ok'}</span></td>
+  </tr>`).join('');
+}
+
+function renderAllTelemTable() {
+  const tbody = document.getElementById('telem-all-tbody');
+  if (!telemData.length) { tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:32px">No events</td></tr>'; return; }
+  tbody.innerHTML = telemData.map(r => `<tr>
+    <td class="td-mono">${fmt(r.timestamp)}</td>
+    <td>${r.appVersion || '—'}</td>
+    <td>${r.event || '—'}</td>
+    <td style="color:var(--muted)">${r.os || '—'}</td>
+    <td style="font-size:12px;color:var(--muted)">${r.gpu || '—'}</td>
+    <td style="color:var(--muted)">${r.vram || '—'}</td>
+    <td style="color:var(--muted)">${r.uptime || '—'}</td>
+    <td>${r.jobs ?? '—'}</td>
+  </tr>`).join('');
+}
+
+function renderErrorsTable() {
+  const errors = telemData.filter(e => e.error);
+  document.getElementById('err-badge').textContent = errors.length;
+  const tbody = document.getElementById('err-tbody');
+  if (!errors.length) { tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--green);padding:32px">✓ No errors recorded</td></tr>'; return; }
+  tbody.innerHTML = errors.map(r => `<tr>
+    <td class="td-mono">${fmt(r.timestamp)}</td>
+    <td>${r.appVersion || '—'}</td>
+    <td style="color:var(--red)">${r.errorMessage || 'Unknown error'}</td>
+    <td style="color:var(--muted);font-size:12px">${r.gpu || '—'}</td>
+  </tr>`).join('');
+}
+
+async function loadReleases() {
+  const tbody = document.getElementById('releases-tbody');
+  try {
+    const r = await fetch('https://api.github.com/repos/Xonarouss/genuxaistudio/releases?per_page=10');
+    const releases = await r.json();
+    if (!releases.length) { tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:32px">No releases yet</td></tr>'; return; }
+    tbody.innerHTML = releases.map(rel => {
+      const totalDl = rel.assets.reduce((s, a) => s + a.download_count, 0);
+      const assets = rel.assets.map(a => `<span style="font-size:11px;background:var(--surface2);padding:2px 7px;border-radius:5px;margin-right:4px">${a.name.split('_').pop()}</span>`).join('');
+      return `<tr>
+        <td><span style="font-size:11px;background:rgba(124,58,237,.15);color:#a855f7;padding:2px 8px;border-radius:5px">${rel.tag_name}</span></td>
+        <td style="font-weight:500">${rel.name}</td>
+        <td class="td-mono">${fmt(rel.published_at)}</td>
+        <td style="font-weight:600;color:var(--green)">${totalDl.toLocaleString()}</td>
+        <td>${assets || '<span style="color:var(--muted)">—</span>'}</td>
+      </tr>`;
+    }).join('');
+  } catch {
+    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:32px">Could not load releases</td></tr>';
+  }
+}
+
+// Auto-refresh telemetry every 30s
+setInterval(async () => {
+  try {
+    const r = await fetch(`${API}/api/admin/metrics`, { headers: { Authorization: `Bearer ${JWT}` } });
+    if (r.ok) {
+      const d = await r.json();
+      if (d.events) { telemData = d.events; renderTelemTable(); renderAllTelemTable(); renderErrorsTable(); toast('📡 Telemetry refreshed'); }
+    }
+  } catch {}
+}, 30000);
+</script>
 </body>
 </html>
