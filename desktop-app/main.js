@@ -1394,7 +1394,7 @@ async function bootstrapEmbeddedPython() {
   });
 
   // ── Step 3: Enable site-packages (required for pip to work) ───────────────
-  // The ._pth file controls Python's module search. Uncomment 'import site'.
+  // The ._pth file controls Python's module search. Add Lib/site-packages and uncomment 'import site'.
   const pthFiles = fs.readdirSync(pythonDir).filter(f => f.endsWith('._pth'));
   for (const pthFile of pthFiles) {
     const pthPath = path.join(pythonDir, pthFile);
@@ -1402,6 +1402,9 @@ async function bootstrapEmbeddedPython() {
     // Enable site-packages by uncommenting #import site
     content = content.replace('#import site', 'import site');
     if (!content.includes('import site')) content += '\nimport site\n';
+    if (!content.includes('Lib/site-packages') && !content.includes('Lib\\site-packages')) {
+      content = 'Lib/site-packages\n' + content;
+    }
     writeFileSync(pthPath, content, 'utf8');
   }
   sendProgress('✓ Python extracted and configured.');
@@ -1427,10 +1430,13 @@ async function bootstrapEmbeddedPython() {
   // ── Step 5: Run get-pip.py ────────────────────────────────────────────────
   sendProgress('⚙ Installing pip...');
   await new Promise((resolve, reject) => {
-    const proc = spawn(pythonExe, [getPipPath], {
+    const cleanEnv = { ...process.env };
+    delete cleanEnv.PYTHONHOME;
+    delete cleanEnv.PYTHONPATH;
+    const proc = spawn(pythonExe, [getPipPath, '--no-warn-script-location'], {
       cwd: pythonDir,
       stdio: ['ignore', 'pipe', 'pipe'],
-      env: { ...process.env, PYTHONHOME: pythonDir, PYTHONPATH: pythonDir }
+      env: cleanEnv
     });
     proc.stdout.on('data', d => sendProgress(d.toString().trim()));
     proc.stderr.on('data', d => sendProgress(d.toString().trim()));
@@ -1607,9 +1613,17 @@ ipcMain.handle('engine:startRecastJob', async (_, jobConfig) => {
       send(`[Python AI Engine] Launching genux_infer.py (${pythonExe})`);
       send(`[Python AI Engine] Active models: ${Object.entries(enrichedConfig.availableModels).filter(([, v]) => v).map(([k]) => k).join(', ')}`);
 
+      const pyEnv = { ...process.env };
+      const embeddedDir = getEmbeddedPythonDir();
+      if (pythonExe.startsWith(embeddedDir)) {
+        delete pyEnv.PYTHONHOME;
+        delete pyEnv.PYTHONPATH;
+      }
+
       activeEngineChild = spawn(pythonExe, [pythonScript, tmpCfg], {
         cwd: path.dirname(pythonScript),
-        stdio: ['ignore', 'pipe', 'pipe']
+        stdio: ['ignore', 'pipe', 'pipe'],
+        env: pyEnv
       });
 
       attachProgressParser(activeEngineChild, mainWindow, (code) => {
@@ -1757,6 +1771,7 @@ ipcMain.handle('setup:installPythonEnv', async () => {
   // Try multiple locations (dev tree, installed app resources)
   const requirementsCandidates = [
     path.join(__dirname, '..', 'engine-cpp', 'python', 'requirements.txt'),
+    path.join(process.resourcesPath || '', 'engine-cpp', 'python', 'requirements.txt'),
     path.join(process.resourcesPath || '', 'requirements.txt'),
     path.join(app.getPath('userData'), 'requirements.txt'),
   ];
@@ -1801,10 +1816,11 @@ ipcMain.handle('setup:installPythonEnv', async () => {
     ];
 
     const env = { ...process.env };
-    // For embedded Python: set PYTHONHOME to the extracted dir
+    // For embedded Python: ensure isolated environment without conflicting PYTHONHOME
     const embeddedDir = getEmbeddedPythonDir();
-    if (fs.existsSync(path.join(embeddedDir, 'python.exe'))) {
-      env.PYTHONHOME = embeddedDir;
+    if (pyExe.startsWith(embeddedDir)) {
+      delete env.PYTHONHOME;
+      delete env.PYTHONPATH;
     }
 
     const proc = spawn(pyExe, pipArgs, { stdio: ['ignore', 'pipe', 'pipe'], env });
