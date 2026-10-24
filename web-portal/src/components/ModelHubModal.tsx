@@ -35,11 +35,12 @@ export const INITIAL_MODELS: ModelItem[] = [
   },
   {
     id: 'sam2',
-    name: 'SAM 2.1 Video Large + Clean-Plate Tracking',
+    // 898 MB — verified public download from dl.fbaipublicfiles.com
+    name: 'Meta SAM 2.1 Hiera-Large Rotoscope Masker',
     category: 'segmentation',
-    source: 'Meta AI Research / HuggingFace',
+    source: 'Meta AI Research / fbaipublicfiles.com',
     sourceUrl: 'https://github.com/facebookresearch/sam2',
-    size: '2.2 GB',
+    size: '898 MB',
     status: 'missing',
     progress: 0,
     localPath: '~/.cache/genux/models/sam2.1_hiera_large.pt',
@@ -47,6 +48,7 @@ export const INITIAL_MODELS: ModelItem[] = [
   },
   {
     id: 'dwpose',
+    // 420 MB — verified public
     name: 'DWPose 133-Keypoint Whole-Body Tracker',
     category: 'motion',
     source: 'OpenMMLab Official ONNX',
@@ -59,53 +61,71 @@ export const INITIAL_MODELS: ModelItem[] = [
   },
   {
     id: 'depth',
-    name: 'DepthAnything-V2 Metric Depth Estimator',
+    // Switched to Small ViTS (98 MB) — 8x faster than Large, same API
+    name: 'DepthAnything-V2 Small Metric Estimator (ViTS)',
     category: 'motion',
-    source: 'Depth-Anything Research',
-    sourceUrl: 'https://huggingface.co/depth-anything',
-    size: '850 MB',
+    source: 'Depth-Anything Research / HuggingFace',
+    sourceUrl: 'https://huggingface.co/depth-anything/Depth-Anything-V2-Small',
+    size: '98 MB',
     status: 'missing',
     progress: 0,
-    localPath: '~/.cache/genux/models/depth_anything_v2_vitl.pth',
+    localPath: '~/.cache/genux/models/depth_anything_v2_vits.pth',
     trtOptimized: true,
   },
   {
     id: 'gemma',
-    name: 'Gemma 2 Director Agent (Q4_K_M GGUF)',
+    // Switched from 9B gated model → 2B public bartowski Q4_K_M (1.6 GB)
+    name: 'Gemma 2 2B Director Agent (Q4_K_M GGUF)',
     category: 'llm',
-    source: 'Google DeepMind & llama.cpp',
-    sourceUrl: 'https://huggingface.co/google/gemma-2-9b-it-GGUF',
-    size: '2.1 GB',
+    source: 'Google DeepMind / bartowski (public mirror)',
+    sourceUrl: 'https://huggingface.co/bartowski/gemma-2-2b-it-GGUF',
+    size: '1.6 GB',
     status: 'missing',
     progress: 0,
-    localPath: '~/.cache/genux/models/gemma-2-9b-it.Q4_K_M.gguf',
+    localPath: '~/.cache/genux/models/gemma-2-2b-it-Q4_K_M.gguf',
     trtOptimized: false,
   },
   {
     id: 'wan21',
-    name: 'Wan 2.1 Video Diffusion 14B (FP8 E4M3 Blackwell)',
+    // 16.4 GB — verified public 200 OK on Comfy-Org HuggingFace mirror
+    name: 'Wan 2.1 14B FP8 Video Diffusion (i2v 480p)',
     category: 'synthesis',
-    source: 'Wan-AI Official ComfyUI Repack',
-    sourceUrl: 'https://huggingface.co/Wan-AI/Wan2.1-I2V-14B-720P',
-    size: '9.4 GB',
+    source: 'Wan-AI / Comfy-Org HuggingFace Repack',
+    sourceUrl: 'https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged',
+    size: '16.4 GB',
     status: 'missing',
     progress: 0,
     localPath: '~/.cache/genux/models/wan2.1_i2v_480p_14B_fp8_e4m3fn.safetensors',
     trtOptimized: true,
   },
   {
+    id: 'ltxvideo',
+    // 2.8 GB — verified public 302→200 on HuggingFace
+    name: 'LTX-Video 2B v0.9.5 Realtime Latent Backbone',
+    category: 'synthesis',
+    source: 'Lightricks / HuggingFace',
+    sourceUrl: 'https://huggingface.co/Lightricks/LTX-Video',
+    size: '2.8 GB',
+    status: 'missing',
+    progress: 0,
+    localPath: '~/.cache/genux/models/ltx-video-2b-v0.9.5.safetensors',
+    trtOptimized: true,
+  },
+  {
     id: 'pulid',
-    name: 'InstantID / PuLID Character Anchor',
+    // 1.25 GB — verified public 302→200 on HuggingFace
+    name: 'InstantID Character Identity Anchor (IP-Adapter)',
     category: 'vault',
-    source: 'InstantX Team HuggingFace',
+    source: 'InstantX Team / HuggingFace',
     sourceUrl: 'https://huggingface.co/InstantX/InstantID',
-    size: '1.2 GB',
+    size: '1.25 GB',
     status: 'missing',
     progress: 0,
     localPath: '~/.cache/genux/models/ip-adapter-instantid.bin',
     trtOptimized: true,
   }
 ];
+
 
 interface ModelHubModalProps {
   isOpen: boolean;

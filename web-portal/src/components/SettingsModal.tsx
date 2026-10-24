@@ -942,8 +942,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     >
                       <option value="local_gemma" disabled={!isGemmaInstalled}>
                         {isGemmaInstalled 
-                          ? '100% Offline: Local Gemma 2 Director (C++ GGUF - Ready)' 
-                          : '100% Offline: Local Gemma 2 Director (Not downloaded - install in Models tab)'}
+                          ? '100% Offline: Local Gemma 2 2B Director (Q4_K_M GGUF — Ready)' 
+                          : '100% Offline: Local Gemma 2 2B Director (Not downloaded — install in Models tab)'}
                       </option>
                       <option value="google_gemini">Cloud API: Google Gemini 2.0 (Flash / Pro)</option>
                       <option value="openai_chatgpt">Cloud API: OpenAI ChatGPT (GPT-4o)</option>
@@ -954,7 +954,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs flex items-start gap-2.5 mt-2">
                         <AlertTriangle size={15} className="shrink-0 text-amber-400 mt-0.5" />
                         <div>
-                          <strong>Gemma 2 Not Downloaded:</strong> Local Gemma 2 Director requires downloading the 2.1 GB neural weights file.
+                          <strong>Gemma 2 2B Not Downloaded:</strong> Local AI Director requires downloading the 1.6 GB model weights (Gemma 2 2B Q4_K_M GGUF — free, no login needed).
                           <div className="mt-2 flex items-center gap-2">
                             <button
                               onClick={() => {

@@ -24,7 +24,7 @@ bool SocialIngestor::ingestUrl(
     std::filesystem::path target = outputDir / "ingested_clip.mp4";
 
     // Real execution of yt-dlp binary with NVDEC parameters
-    std::string cmd = "\"" + m_ytdlpPath + "\" -f \"bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best\" --no-playlist -o \"" + target.string() + "\" \"" + url + "\"";
+    std::string cmd = "\"" + m_ytdlpPath.string() + "\" -f \"bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best\" --no-playlist -o \"" + target.string() + "\" \"" + url + "\"";
     
     if (progressCallback) {
         progressCallback("[NVDEC] Hardware demuxing 1080p stream into CUDA device buffer: " + target.string());

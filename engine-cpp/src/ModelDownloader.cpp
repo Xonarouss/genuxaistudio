@@ -65,8 +65,8 @@ bool ModelDownloader::downloadAsync(
         if (callback && !taskPtr->cancelRequested.load()) {
             DownloadProgress done;
             done.modelId = modelId;
-            done.bytesDownloaded = totalBytes;
-            done.totalBytes = totalBytes;
+            done.bytesDownloaded = 0;
+            done.totalBytes = 0;
             done.speedMBps = 0;
             done.etaSeconds = 0;
             done.isComplete = true;
