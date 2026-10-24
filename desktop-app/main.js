@@ -560,12 +560,32 @@ const MODEL_CATALOG = {
     id: 'pulid',
     name: 'InstantID Character Identity Anchor (IP-Adapter)',
     filename: 'ip-adapter-instantid.bin',
-    // 1.25 GB — verified public 302→200 OK on HuggingFace
+    // 1.25 GB
     sizeBytes: 1250000000,
     url: 'https://huggingface.co/InstantX/InstantID/resolve/main/ip-adapter.bin',
     category: 'vault'
+  },
+  // ── Lip Sync (OPTIONAL) ─────────────────────────────────────────────────────
+  // Download either or both. LatentSync is primary (best quality),
+  // Wav2Lip GAN is the fast fallback. Pipeline skips stage if neither present.
+  latentsync: {
+    id: 'latentsync',
+    name: 'LatentSync 1.5 Precision Lip Sync (ByteDance 2025)',
+    filename: 'latentsync_unet.pt',
+    sizeBytes: 1700000000,
+    url: 'https://huggingface.co/ByteDance/LatentSync-1.5/resolve/main/latentsync_unet.pt',
+    category: 'lipsync'
+  },
+  wav2lip: {
+    id: 'wav2lip',
+    name: 'Wav2Lip GAN Fast Lip Sync',
+    filename: 'wav2lip_gan.pth',
+    sizeBytes: 272000000,
+    url: 'https://huggingface.co/numz/wav2lip_studio/resolve/main/Wav2Lip/wav2lip_gan.pth',
+    category: 'lipsync'
   }
 };
+
 
 const activeDownloads = new Map();
 
@@ -1260,17 +1280,23 @@ ipcMain.handle('engine:startRecastJob', async (_, jobConfig) => {
       gemmaModelPath:    path.join(modelsDir, MODEL_CATALOG.gemma.filename),
       ltxModelPath:      path.join(modelsDir, MODEL_CATALOG.ltxvideo.filename),
       pulidModelPath:    path.join(modelsDir, MODEL_CATALOG.pulid.filename),
-      // Report which models are actually available on disk
+      // Lip sync (optional — pipeline skips gracefully if not downloaded)
+      latentsyncModelPath: path.join(modelsDir, MODEL_CATALOG.latentsync.filename),
+      wav2lipModelPath:    path.join(modelsDir, MODEL_CATALOG.wav2lip.filename),
+      // Report which models are on disk
       availableModels: {
-        wan21:    fs.existsSync(path.join(modelsDir, MODEL_CATALOG.wan21.filename)),
-        sam2:     fs.existsSync(path.join(modelsDir, MODEL_CATALOG.sam2.filename)),
-        dwpose:   fs.existsSync(path.join(modelsDir, MODEL_CATALOG.dwpose.filename)),
-        depth:    fs.existsSync(path.join(modelsDir, MODEL_CATALOG.depth.filename)),
-        gemma:    fs.existsSync(path.join(modelsDir, MODEL_CATALOG.gemma.filename)),
-        ltxvideo: fs.existsSync(path.join(modelsDir, MODEL_CATALOG.ltxvideo.filename)),
-        pulid:    fs.existsSync(path.join(modelsDir, MODEL_CATALOG.pulid.filename))
+        wan21:      fs.existsSync(path.join(modelsDir, MODEL_CATALOG.wan21.filename)),
+        sam2:       fs.existsSync(path.join(modelsDir, MODEL_CATALOG.sam2.filename)),
+        dwpose:     fs.existsSync(path.join(modelsDir, MODEL_CATALOG.dwpose.filename)),
+        depth:      fs.existsSync(path.join(modelsDir, MODEL_CATALOG.depth.filename)),
+        gemma:      fs.existsSync(path.join(modelsDir, MODEL_CATALOG.gemma.filename)),
+        ltxvideo:   fs.existsSync(path.join(modelsDir, MODEL_CATALOG.ltxvideo.filename)),
+        pulid:      fs.existsSync(path.join(modelsDir, MODEL_CATALOG.pulid.filename)),
+        latentsync: fs.existsSync(path.join(modelsDir, MODEL_CATALOG.latentsync.filename)),
+        wav2lip:    fs.existsSync(path.join(modelsDir, MODEL_CATALOG.wav2lip.filename))
       }
     };
+
 
     const send = (msg) => { if (mainWindow) mainWindow.webContents.send('pipeline:progress', msg); };
 

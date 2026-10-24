@@ -8,7 +8,7 @@ import confetti from 'canvas-confetti';
 export interface ModelItem {
   id: string;
   name: string;
-  category: 'core' | 'segmentation' | 'motion' | 'vault' | 'llm' | 'synthesis';
+  category: 'core' | 'segmentation' | 'motion' | 'vault' | 'llm' | 'synthesis' | 'lipsync';
   source: string;
   sourceUrl: string;
   size: string;
@@ -123,8 +123,37 @@ export const INITIAL_MODELS: ModelItem[] = [
     progress: 0,
     localPath: '~/.cache/genux/models/ip-adapter-instantid.bin',
     trtOptimized: true,
+  },
+  {
+    id: 'latentsync',
+    // 1.7 GB — ByteDance LatentSync 1.5 UNet checkpoint
+    // OPTIONAL: enables precision audio-driven lip sync on recasted characters
+    name: 'LatentSync 1.5 — Precision Lip Sync (ByteDance 2025)',
+    category: 'lipsync',
+    source: 'ByteDance Research / HuggingFace',
+    sourceUrl: 'https://huggingface.co/ByteDance/LatentSync-1.5',
+    size: '1.7 GB',
+    status: 'missing',
+    progress: 0,
+    localPath: '~/.cache/genux/models/latentsync_unet.pt',
+    trtOptimized: true,
+  },
+  {
+    id: 'wav2lip',
+    // 272 MB — Wav2Lip GAN checkpoint (fast fallback lip sync)
+    // OPTIONAL: faster alternative to LatentSync
+    name: 'Wav2Lip GAN — Fast Lip Sync Fallback',
+    category: 'lipsync',
+    source: 'Rudrabha / HuggingFace Mirror',
+    sourceUrl: 'https://github.com/Rudrabha/Wav2Lip',
+    size: '272 MB',
+    status: 'missing',
+    progress: 0,
+    localPath: '~/.cache/genux/models/wav2lip_gan.pth',
+    trtOptimized: false,
   }
 ];
+
 
 
 interface ModelHubModalProps {
@@ -392,6 +421,7 @@ export const ModelHubModal: React.FC<ModelHubModalProps> = ({ isOpen, onClose })
               { id: 'synthesis', label: 'Video Diffusion (Wan 2.1)' },
               { id: 'segmentation', label: 'Segmentation (SAM 2.1)' },
               { id: 'motion', label: 'Motion & Depth' },
+              { id: 'lipsync', label: '💋 Lip Sync' },
               { id: 'vault', label: 'Identity Anchors' },
               { id: 'llm', label: 'Director LLM' }
             ].map(cat => (
