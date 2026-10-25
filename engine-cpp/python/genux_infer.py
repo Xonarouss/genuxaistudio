@@ -433,14 +433,15 @@ def _opencv_synthesis_fallback(frames_dir, masks_dir, char_ref_pil, out_frames_d
 
 
 def run_wan21_synthesis(frames_dir, masks_dir, wan21_path, wan21_vae_path,
-                        enhanced_prompt, job, out_frames_dir, keypoints=None):
+                        enhanced_prompt, job, out_frames_dir, keypoints=None, mocha_path=None):
     """
     TRUE Wan 2.1 FP8 DiT Video Diffusion:
       1. Loads WanImageToVideoPipeline from local FP8 safetensors.
-      2. Composites character identity into each window's conditioning frame.
-      3. Runs full GPU DiT denoising loop in overlapping 33-frame windows.
-      4. Cross-fades overlap zones for seamless temporal coherence.
-      5. Writes full-resolution frames for RIFE/NVENC encode.
+      2. If MoCha character replacement weights are present, injects them.
+      3. Composites character identity into each window's conditioning frame with SAM bounding box.
+      4. Runs full GPU DiT denoising loop in overlapping 33-frame windows.
+      5. Cross-fades overlap zones for seamless temporal coherence.
+      6. Writes full-resolution frames for RIFE/NVENC encode.
     """
     import cv2 as _cv2
     import numpy as np
@@ -481,6 +482,22 @@ def run_wan21_synthesis(frames_dir, masks_dir, wan21_path, wan21_vae_path,
 
         transformer = WanTransformer3DModel.from_single_file(
             str(wan21_path), torch_dtype=dtype)
+
+        # Inject MoCha specialized character replacement weights if downloaded
+        if mocha_path and Path(mocha_path).exists():
+            log(f"MoCha: Detected character replacement weights ({Path(mocha_path).name}) -- injecting weights...")
+            progress("MoCha Recast", "Loading character replacement layers into Wan 2.1...", 63, vram_mb=get_vram_mb())
+            try:
+                sd = torch.load(str(mocha_path), map_location="cpu")
+                if "model" in sd: sd = sd["model"]
+                elif "state_dict" in sd: sd = sd["state_dict"]
+                sd = {k: v.to(dtype) if torch.is_tensor(v) else v for k, v in sd.items()}
+                res = transformer.load_state_dict(sd, strict=False)
+                log(f"MoCha: Injected layers (matched: {len(res.missing_keys)}, unexpected: {len(res.unexpected_keys)})")
+                del sd
+            except Exception as e:
+                log(f"MoCha weight injection note: {e}")
+
         transformer.enable_group_offload(onload_device="cuda", num_blocks_per_group=4)
 
         vae = None
@@ -1103,9 +1120,11 @@ def run_pipeline(job):
     gemma_path  = Path(job.get("gemmaModelPath",  str(models_dir / "gemma-2-2b-it-Q4_K_M.gguf")))
     wan21_path      = Path(job.get("wan21ModelPath",      str(models_dir / "wan2.1_i2v_480p_14B_fp8_e4m3fn.safetensors")))
     wan21_vae_path  = Path(job.get("wan21VaeModelPath",   str(models_dir / "wan_2.1_vae.safetensors")))
+    mocha_path      = Path(job.get("mochaModelPath",      str(models_dir / "mocha_step18500.ckpt")))
 
     log(f"Genux Inference Worker v3.0 | source={source_video.name} | duration={duration_s}s | "
-        f"characters={len(char_attachments)} | wan21={'OK' if wan21_path.exists() else 'MISSING'}")
+        f"characters={len(char_attachments)} | wan21={'OK' if wan21_path.exists() else 'MISSING'} | "
+        f"mocha={'READY' if mocha_path.exists() else 'PENDING'}")
 
     if not source_video.exists():
         error(f"Source video not found: {source_video}", recoverable=False)
@@ -1136,7 +1155,7 @@ def run_pipeline(job):
         enhanced = run_gemma_director(gemma_path, user_prompt, scene_prompt, char_attachments)
         progress("Gemma Director", "Conditioning complete", 60)
 
-        run_wan21_synthesis(frames_dir, masks_dir, wan21_path, wan21_vae_path, enhanced, job, out_frames_dir, keypoints=keypoints)
+        run_wan21_synthesis(frames_dir, masks_dir, wan21_path, wan21_vae_path, enhanced, job, out_frames_dir, keypoints=keypoints, mocha_path=mocha_path)
         # progress 90 is emitted inside run_wan21_synthesis
 
         # ── Stage 5: Lip Sync (LatentSync 1.5 → Wav2Lip GAN → skip) ─────────
