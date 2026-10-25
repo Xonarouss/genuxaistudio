@@ -622,6 +622,14 @@ const MODEL_CATALOG = {
     sizeBytes: 2500000000,
     url: 'https://huggingface.co/ixaac/MimicMotion/resolve/main/MimicMotion_1-1.pth',
     category: 'motion'
+  },
+  inswapper: {
+    id: 'inswapper',
+    name: 'InsightFace Photorealistic Actor Swap (InSwapper 128)',
+    filename: 'inswapper_128.onnx',
+    sizeBytes: 554253681,
+    url: 'https://huggingface.co/ezioruan/inswapper_128.onnx/resolve/main/inswapper_128.onnx',
+    category: 'synthesis'
   }
 };
 
@@ -1619,8 +1627,10 @@ ipcMain.handle('engine:startRecastJob', async (_, jobConfig) => {
       minimaxModelPath:    path.join(modelsDir, MODEL_CATALOG.minimax_h3_recast.filename),
       mochaModelPath:      path.join(modelsDir, MODEL_CATALOG.mocha_recast.filename),
       mimicmotionModelPath: path.join(modelsDir, MODEL_CATALOG.mimicmotion.filename),
+      inswapperModelPath:   path.join(modelsDir, MODEL_CATALOG.inswapper.filename),
       // Report which models are on disk
       availableModels: {
+        inswapper:  fs.existsSync(path.join(modelsDir, MODEL_CATALOG.inswapper.filename)),
         wan21:      fs.existsSync(path.join(modelsDir, MODEL_CATALOG.wan21.filename)),
         sam2:       fs.existsSync(path.join(modelsDir, MODEL_CATALOG.sam2.filename)),
         dwpose:     fs.existsSync(path.join(modelsDir, MODEL_CATALOG.dwpose.filename)),

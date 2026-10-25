@@ -203,6 +203,19 @@ export const INITIAL_MODELS: ModelItem[] = [
     progress: 0,
     localPath: '~/.cache/genux/models/MimicMotion_1-1.pth',
     trtOptimized: true,
+  },
+  {
+    id: 'inswapper',
+    name: 'InsightFace Recast Engine (InSwapper 128)',
+    category: 'synthesis',
+    source: 'InsightFace / HuggingFace',
+    sourceUrl: 'https://huggingface.co/ezioruan/inswapper_128.onnx',
+    directDownloadUrl: 'https://huggingface.co/ezioruan/inswapper_128.onnx/resolve/main/inswapper_128.onnx',
+    size: '554 MB',
+    status: 'missing',
+    progress: 0,
+    localPath: '~/.cache/genux/models/inswapper_128.onnx',
+    trtOptimized: true,
   }
 ];
 

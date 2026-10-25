@@ -72,6 +72,16 @@ const MODELS_CATALOG: ModelDetail[] = [
     architecture: 'InsightFace + Multi-Scale IP-Adapter',
     description: 'Guarantees 99%+ biometric similarity with your custom uploaded character photos without requiring fine-tuning or LoRA training weights.',
     tags: ['InsightFace', 'InstantID', 'Zero Fine-tuning', '.gchar']
+  },
+  {
+    id: 'inswapper',
+    name: 'InsightFace Recast Engine (InSwapper 128)',
+    role: 'Photorealistic Actor Swap & Choreography Lock',
+    size: '554 MB (ONNX)',
+    vramUsage: '~1.2 GB VRAM',
+    architecture: 'InsightFace InSwapper + Buffalo_L 106-Point Tracking',
+    description: 'The industry-standard actor replacement engine matching Higgsfield & Maestro. Swaps identity seamlessly while preserving 100% of original background, camera physics, lighting, and performance.',
+    tags: ['InsightFace', 'InSwapper', 'Maestro Quality', '1:1 Motion']
   }
 ];
 

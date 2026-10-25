@@ -78,6 +78,15 @@ const DEFAULT_MODELS: ModelItem[] = [
     required: false,
     selected: true,
     isInstalled: false
+  },
+  {
+    id: 'inswapper',
+    name: 'InsightFace Recast Engine (InSwapper 128)',
+    subtext: 'Photorealistic actor replacement & choreography lock matching Maestro & Higgsfield',
+    sizeGb: 0.55,
+    required: false,
+    selected: true,
+    isInstalled: false
   }
 ];
 
@@ -416,7 +425,8 @@ export const ModelSetupGate: React.FC<ModelSetupGateProps> = ({
                               sam2: 'https://dl.fbaipublicfiles.com/segment_anything_2/092824/sam2.1_hiera_large.pt',
                               dwpose: 'https://huggingface.co/yzd-v/DWPose/resolve/main/dw-ll_ucoco_384.onnx',
                               depth: 'https://huggingface.co/depth-anything/Depth-Anything-V2-Small/resolve/main/depth_anything_v2_vits.pth',
-                              gemma: 'https://huggingface.co/bartowski/gemma-2-2b-it-GGUF/resolve/main/gemma-2-2b-it-Q4_K_M.gguf'
+                              gemma: 'https://huggingface.co/bartowski/gemma-2-2b-it-GGUF/resolve/main/gemma-2-2b-it-Q4_K_M.gguf',
+                              inswapper: 'https://huggingface.co/ezioruan/inswapper_128.onnx/resolve/main/inswapper_128.onnx'
                             };
                             const target = urls[model.id];
                             if (target) window.genuxNative?.openExternal(target);

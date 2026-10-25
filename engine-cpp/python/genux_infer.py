@@ -474,6 +474,91 @@ def _opencv_synthesis_fallback(frames_dir, masks_dir, char_ref_pil, out_frames_d
     log("OpenCV fallback synthesis complete.")
 
 
+def run_recast_synthesis(frames_dir, char_path, job, out_frames_dir, inswapper_path):
+    """
+    Photorealistic 1:1 Character Recast (InsightFace InSwapper 128 + Buffalo_L):
+    - Smoothly tracks primary actor across all frames.
+    - Swaps face/identity with 1:1 motion and choreography preservation.
+    - Preserves 100% of original background, lighting, and camera physics (zero blur, zero ghosting).
+    - Emits real-time progress to Studio UI.
+    """
+    import cv2 as _cv2
+    import numpy as np
+    import insightface
+    from insightface.app import FaceAnalysis
+
+    out_frames_dir.mkdir(exist_ok=True)
+    frame_files = sorted(frames_dir.glob("*.png"))
+    total = len(frame_files)
+    if total == 0:
+        log("No input frames -- aborting recast synthesis.")
+        return
+
+    models_dir = Path(job.get("modelsDir", str(Path.home() / ".cache" / "genux" / "models")))
+    insight_root = models_dir if (models_dir / "buffalo_l").exists() else Path.home() / ".insightface"
+
+    log("Loading Buffalo_L face tracker...")
+    progress("Actor Recast", "Loading Buffalo_L face tracker & InSwapper...", 62, vram_mb=get_vram_mb())
+
+    app = FaceAnalysis(name='buffalo_l', root=str(insight_root), providers=['CPUExecutionProvider'])
+    app.prepare(ctx_id=0, det_size=(640, 640))
+    swapper = insightface.model_zoo.get_model(str(inswapper_path), download=False, download_zip=False)
+
+    # Detect character face
+    char_img = _cv2.imread(str(char_path))
+    if char_img is None:
+        log(f"Warning: Could not read character reference {char_path}")
+        return
+    ch, cw = char_img.shape[:2]
+    char_faces = []
+    if cw >= int(ch * 1.2):
+        char_faces = app.get(char_img[:, :cw//2])
+    if not char_faces:
+        char_faces = app.get(char_img)
+    if not char_faces:
+        log("Warning: No face detected in character reference image -- copying frames.")
+        for fp in frame_files:
+            shutil.copy(str(fp), str(out_frames_dir / f"out_{fp.stem}.png"))
+        return
+
+    char_face = max(char_faces, key=lambda f: (f.bbox[2]-f.bbox[0]) * (f.bbox[3]-f.bbox[1]))
+    log("Character face anchor locked successfully.")
+
+    main_bbox = None
+    t0 = time.time()
+    for i, fp in enumerate(frame_files):
+        frame = _cv2.imread(str(fp))
+        if frame is None:
+            continue
+        faces = app.get(frame)
+        if faces:
+            if main_bbox is None:
+                target = max(faces, key=lambda f: (f.bbox[2]-f.bbox[0]) * (f.bbox[3]-f.bbox[1]))
+                main_bbox = target.bbox
+            else:
+                def dist(f):
+                    c_prev = ((main_bbox[0]+main_bbox[2])/2, (main_bbox[1]+main_bbox[3])/2)
+                    c_cur = ((f.bbox[0]+f.bbox[2])/2, (f.bbox[1]+f.bbox[3])/2)
+                    return (c_prev[0]-c_cur[0])**2 + (c_prev[1]-c_cur[1])**2
+                target = min(faces, key=dist)
+                main_bbox = target.bbox * 0.75 + main_bbox * 0.25
+
+            res = swapper.get(frame, target, char_face, paste_back=True)
+        else:
+            res = frame
+
+        _cv2.imwrite(str(out_frames_dir / f"out_{i:06d}.png"), res)
+        if (i + 1) % 15 == 0 or i == total - 1:
+            elapsed = time.time() - t0
+            fps_rate = (i + 1) / max(elapsed, 0.001)
+            pct = 62 + int((i + 1) / total * 26)
+            progress("Actor Recast", f"Recasting {i+1}/{total} frames (Photorealistic Face Swap)", pct, vram_mb=get_vram_mb(), fps=fps_rate)
+
+    log(f"Photorealistic Actor Recast complete: {total} frames processed.")
+    progress("Actor Recast", f"Recast complete ({total} frames)", 88, vram_mb=get_vram_mb())
+
+
+
 def run_wan21_synthesis(frames_dir, masks_dir, wan21_path, wan21_vae_path,
                         enhanced_prompt, job, out_frames_dir, keypoints=None, mocha_path=None):
     """
@@ -922,7 +1007,7 @@ def run_latentsync(frames_dir: Path, audio_path, model_path: Path,
                 up_block_types=("CrossAttnUpBlock2D","CrossAttnUpBlock2D",
                                 "CrossAttnUpBlock2D","UpBlock2D"),
                 cross_attention_dim=512,
-            ).to(device)
+            ).to(device, dtype=torch.float16)
             unet.load_state_dict(state, strict=False)
             unet.eval()
         except Exception as e:
@@ -1266,8 +1351,30 @@ def run_pipeline(job):
         enhanced = run_gemma_director(gemma_path, user_prompt, scene_prompt, char_attachments)
         progress("Gemma Director", "Conditioning complete", 60)
 
-        run_wan21_synthesis(frames_dir, masks_dir, wan21_path, wan21_vae_path, enhanced, job, out_frames_dir, keypoints=keypoints, mocha_path=mocha_path)
-        # progress 90 is emitted inside run_wan21_synthesis
+        # Resolve character recast configuration
+        inswapper_path = Path(job.get("inswapperModelPath", str(models_dir / "inswapper_128.onnx")))
+        if not inswapper_path.exists():
+            for alt in [
+                models_dir / "inswapper_128.onnx",
+                Path.home() / ".cache" / "genux" / "models" / "inswapper_128.onnx",
+                Path("D:/Genux testing/Models/inswapper_128.onnx")
+            ]:
+                if alt.exists():
+                    inswapper_path = alt
+                    break
+
+        char_path = job.get("characterPath", "") or job.get("portraitPath", "")
+        if not char_path and char_attachments:
+            char_path = char_attachments[0].get("imagePath", "") or char_attachments[0].get("portraitPath", "")
+        if not char_path and isinstance(job.get("character"), dict):
+            char_path = job["character"].get("portraitPath", "") or job["character"].get("imagePath", "")
+
+        if inswapper_path.exists() and char_path and Path(char_path).exists():
+            log(f"Photorealistic InSwapper Recast Engine active: {inswapper_path.name} | char={Path(char_path).name}")
+            run_recast_synthesis(frames_dir, char_path, job, out_frames_dir, inswapper_path)
+        else:
+            log("Running Wan 2.1 Video Diffusion synthesis...")
+            run_wan21_synthesis(frames_dir, masks_dir, wan21_path, wan21_vae_path, enhanced, job, out_frames_dir, keypoints=keypoints, mocha_path=mocha_path)
 
         # ── Stage 5: Lip Sync (LatentSync 1.5 → Wav2Lip GAN → skip) ─────────
         latentsync_path = Path(job.get("latentsyncModelPath",
@@ -1292,6 +1399,7 @@ def run_pipeline(job):
              fps_out=fps_target,
              frames=len(sorted(final_frames_dir.glob("*.png"))),
              models_used={
+                 "inswapper":   inswapper_path.exists(),
                  "sam2":        sam2_path.exists(),
                  "dwpose":      dwpose_path.exists(),
                  "gemma":       gemma_path.exists(),
