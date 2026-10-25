@@ -1025,7 +1025,7 @@ export const DesktopStudioApp: React.FC = () => {
         const res = await window.genuxNative.exportVideoFile(vid.filePath, `${vid.title || 'genux_recast'}.mp4`);
         if (res && res.success) {
           setEngineLogs(prev => [...prev, `[Export] Saved video master to: ${res.targetPath}`]);
-          alert(`Video succesvol gedownload en opgeslagen naar:\n${res.targetPath}`);
+          alert(`Video successfully exported and saved to:\n${res.targetPath}`);
           return;
         } else if (res && res.canceled) {
           return;
@@ -1040,9 +1040,9 @@ export const DesktopStudioApp: React.FC = () => {
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
-      setEngineLogs(prev => [...prev, `[Export] Browser download gestart voor: ${vid.title}`]);
+      setEngineLogs(prev => [...prev, `[Export] Browser download initiated for: ${vid.title}`]);
     } catch (err: any) {
-      alert(`Export mislukt: ${err.message}`);
+      alert(`Export failed: ${err.message}`);
       setEngineLogs(prev => [...prev, `[Export Error] ${err.message}`]);
     }
   };
@@ -1102,15 +1102,14 @@ export const DesktopStudioApp: React.FC = () => {
         if (window.genuxNative.onPipelineProgress) {
           unsubProgress = window.genuxNative.onPipelineProgress((msg: string) => {
             setEngineLogs(prev => [...prev, msg]);
-            // Extract percentage only from authoritative pipeline messages (ignore stderr tqdm)
+            // Extract percentage only from authoritative pipeline messages (ignore stderr tqdm and arbitrary text)
             if (!msg.startsWith('[stderr]') && !msg.includes('%|') && !msg.includes('it/s')) {
-              const structuredMatch = msg.match(/\((\d+)%\s*\|/);
-              const fallbackMatch = msg.match(/(\d+)%/);
-              const match = structuredMatch || fallbackMatch;
-              if (match) {
-                const p = parseInt(match[1], 10);
+              const structuredMatch = msg.match(/\((\d{1,3})%\s*\|/);
+              if (structuredMatch) {
+                const p = parseInt(structuredMatch[1], 10);
                 if (!isNaN(p)) {
-                  setRenderProgress(prev => Math.max(prev, p));
+                  // Cap progress to max 95% until final master result is verified
+                  setRenderProgress(prev => Math.max(prev, Math.min(p, 95)));
                 }
               }
             }
@@ -1127,6 +1126,7 @@ export const DesktopStudioApp: React.FC = () => {
           unsubResult = window.genuxNative.onPipelineResult((res: any) => {
             if (res && res.output_path) {
               renderedResultPath = res.output_path;
+              setRenderProgress(100);
               setEngineLogs(prev => [...prev, `[Done] Recast Master output ready: ${res.output_path}`]);
             }
           });
@@ -2818,7 +2818,7 @@ export const DesktopStudioApp: React.FC = () => {
                     </span>
                   </h3>
                   <p className="text-[11px] text-slate-400 font-sans">
-                    Inspecteer live logs, download het logbestand of verstuur een 1-klik bug report naar de admin.
+                    Inspect live logs, download the log file, or send a 1-click bug report to the admin.
                   </p>
                 </div>
               </div>
@@ -2843,7 +2843,7 @@ export const DesktopStudioApp: React.FC = () => {
                     URL.revokeObjectURL(url);
                   }}
                   className="px-3 py-1.5 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.08] text-slate-300 hover:text-white font-medium text-xs transition flex items-center gap-1.5 shadow-sm"
-                  title="Download de volledige console logs als .txt bestand"
+                  title="Download the full console logs as a .txt file"
                 >
                   <Download size={13} className="text-emerald-400" />
                   <span>Download Logs</span>
@@ -2875,11 +2875,11 @@ export const DesktopStudioApp: React.FC = () => {
                         }).catch(() => {});
                       }
                       setBugReportStatus('success');
-                      setBugReportMessage('Bug Report & console logs verzonden naar Admin Panel!');
+                      setBugReportMessage('Bug Report & console logs sent to Admin Panel!');
                       setTimeout(() => setBugReportStatus('idle'), 5000);
                     } catch (err: any) {
                       setBugReportStatus('error');
-                      setBugReportMessage(`Verzenden mislukt: ${err.message}`);
+                      setBugReportMessage(`Failed to send: ${err.message}`);
                       setTimeout(() => setBugReportStatus('idle'), 5000);
                     } finally {
                       setIsReportingBug(false);
@@ -2893,22 +2893,22 @@ export const DesktopStudioApp: React.FC = () => {
                       ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-300'
                       : 'bg-rose-500/20 hover:bg-rose-500/30 border-rose-500/40 text-rose-300 hover:text-rose-200'
                   }`}
-                  title="Stuur met 1 klik deze fouten en logs direct door naar het Genux AI Admin Panel"
+                  title="Send these errors and console logs directly to the Genux AI Admin Panel with 1 click"
                 >
                   {isReportingBug ? (
                     <>
                       <RefreshCw size={13} className="animate-spin text-amber-400" />
-                      <span>Verzenden...</span>
+                      <span>Sending...</span>
                     </>
                   ) : bugReportStatus === 'success' ? (
                     <>
                       <CheckCircle2 size={13} className="text-emerald-400" />
-                      <span>Verzonden naar Admin!</span>
+                      <span>Sent to Admin!</span>
                     </>
                   ) : (
                     <>
                       <AlertTriangle size={13} className="text-rose-400" />
-                      <span>Rapporteer Bug / Verstuur naar Admin</span>
+                      <span>Report Bug / Send to Admin</span>
                     </>
                   )}
                 </button>
@@ -2916,7 +2916,7 @@ export const DesktopStudioApp: React.FC = () => {
                 <button
                   onClick={() => setEngineLogs([])}
                   className="p-1.5 rounded-xl bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.06] text-slate-400 hover:text-rose-400 transition"
-                  title="Logs wissen"
+                  title="Clear logs"
                 >
                   <Trash2 size={13} />
                 </button>
@@ -2928,7 +2928,7 @@ export const DesktopStudioApp: React.FC = () => {
               <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-xl px-4 py-2.5 text-xs text-emerald-300 flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <CheckCircle2 size={15} className="text-emerald-400 shrink-0" />
-                  <span>{bugReportMessage || 'Console logs en hardware specificaties succesvol gerapporteerd aan het Genux AI Admin dashboard!'}</span>
+                  <span>{bugReportMessage || 'Console logs and hardware specs successfully reported to the Genux AI Admin dashboard!'}</span>
                 </div>
                 <button onClick={() => setBugReportStatus('idle')} className="text-emerald-400 hover:text-emerald-200 text-xs">
                   ✕
@@ -2951,7 +2951,7 @@ export const DesktopStudioApp: React.FC = () => {
             <div className="flex-1 bg-[#090B10] border border-white/[0.08] rounded-2xl p-4 font-mono text-xs text-slate-300 overflow-y-auto space-y-1.5 custom-scrollbar">
               {engineLogs.length === 0 ? (
                 <div className="h-full flex items-center justify-center text-slate-500">
-                  <span>Geen actieve logs. Start een recast job of importeer een video om engine diagnostics te zien.</span>
+                  <span>No active logs. Start a recast job or import a video to view engine diagnostics.</span>
                 </div>
               ) : (
                 engineLogs.map((log, idx) => (

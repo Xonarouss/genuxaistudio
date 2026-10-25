@@ -2179,12 +2179,12 @@ ipcMain.handle('console:reportBug', async (_, reportData = {}) => {
 ipcMain.handle('video:export', async (_, { sourcePath, defaultName }) => {
   try {
     if (!sourcePath || !fs.existsSync(sourcePath)) {
-      return { success: false, error: 'Bronbestand niet gevonden op schijf: ' + (sourcePath || 'onbekend') };
+      return { success: false, error: 'Source file not found on disk: ' + (sourcePath || 'unknown') };
     }
     const exportDir = getEffectiveExportDir();
     const saveName = defaultName || path.basename(sourcePath) || `genux_recast_${Date.now()}.mp4`;
     const { filePath, canceled } = await dialog.showSaveDialog(mainWindow, {
-      title: 'Download & Sla Master Video Op',
+      title: 'Download & Save Master Video',
       defaultPath: path.join(exportDir, saveName),
       filters: [
         { name: 'MP4 Video (*.mp4)', extensions: ['mp4'] },

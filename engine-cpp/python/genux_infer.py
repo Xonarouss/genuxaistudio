@@ -578,6 +578,8 @@ def run_wan21_synthesis(frames_dir, masks_dir, wan21_path, wan21_vae_path,
     if total == 0:
         log("No input frames -- aborting synthesis."); return
 
+    models_dir = Path(job.get("modelsDir", str(Path.home() / ".cache" / "genux" / "models")))
+
     # Resolve character reference
     char_path = job.get("characterPath", "") or job.get("portraitPath", "")
     if not char_path:
@@ -641,9 +643,9 @@ def run_wan21_synthesis(frames_dir, masks_dir, wan21_path, wan21_vae_path,
         if total_vram_gb >= 22.0:
             blocks_per_grp = 20  # 24GB GPUs (RTX 4090, 3090)
         elif total_vram_gb >= 14.0:
-            blocks_per_grp = 8   # 16GB GPUs (RTX 5080, 4080): 8 blocks = 5.6GB weights, 12.5GB peak total (zero WDDM thrashing)
+            blocks_per_grp = 14  # 16GB GPUs (RTX 5080, 4080): 14 blocks minimizes PCIe transfers
         elif total_vram_gb >= 11.0:
-            blocks_per_grp = 6   # 12GB GPUs (RTX 3060, 4070)
+            blocks_per_grp = 8   # 12GB GPUs (RTX 3060, 4070)
         else:
             blocks_per_grp = 4   # 8GB GPUs
 
@@ -699,10 +701,10 @@ def run_wan21_synthesis(frames_dir, masks_dir, wan21_path, wan21_vae_path,
     gen_h = max(16, int(orig_h * scale) // 16 * 16)
     log(f"Generation resolution: {gen_w}x{gen_h} (orig {orig_w}x{orig_h})")
 
-    # Overlapping window config (33 frames, 5 frame overlap = 28 frame stride)
-    WINDOW  = 33
+    # Overlapping window config (49 frames, 5 frame overlap = 44 frame stride for 2x faster throughput)
+    WINDOW  = 49
     OVERLAP = 5
-    STRIDE  = WINDOW - OVERLAP  # 28
+    STRIDE  = WINDOW - OVERLAP  # 44
 
     windows = []
     s = 0
@@ -719,7 +721,7 @@ def run_wan21_synthesis(frames_dir, masks_dir, wan21_path, wan21_vae_path,
 
     log(f"Processing {total} frames in {len(windows)} windows (GPU DiT)")
     all_frames = [None] * total
-    num_steps = max(5, int(job.get("inferenceSteps", 6)))
+    num_steps = max(4, int(job.get("inferenceSteps", 5)))
 
     for wi, (ws, we, wn) in enumerate(windows):
         pct = 65 + int(wi / len(windows) * 25)
