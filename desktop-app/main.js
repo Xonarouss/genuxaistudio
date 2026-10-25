@@ -1609,6 +1609,7 @@ ipcMain.handle('engine:startRecastJob', async (_, jobConfig) => {
       enableTiledVAE:    jobConfig.enableTiledVAE !== false,
       identityWeight:    jobConfig.identityWeight || 0.85,
       cameraMode:        jobConfig.cameraMode || 'original',
+      recastMode:        jobConfig.recastMode || 'full_body',
       trimStart:         jobConfig.trimStart || 0,
       trimEnd:           jobConfig.trimEnd || 10,
       // Multi-character attachments: [{tag, name, imagePath, charId}, ...]

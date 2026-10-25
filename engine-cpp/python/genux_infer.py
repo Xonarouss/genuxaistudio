@@ -427,7 +427,7 @@ def _blend_character_into_frame(cond_frame_pil, char_ref_pil, masks_dir, frame_i
         box_w = max(32, xmax - xmin)
         box_h = max(32, ymax - ymin)
         char_scaled = char_ref_pil.resize((box_w, box_h), Image.Resampling.LANCZOS)
-        char_canvas = Image.new("RGB", (gen_w, gen_h), (0, 0, 0))
+        char_canvas = cond_frame_pil.copy()
         char_canvas.paste(char_scaled, (xmin, ymin))
         char_np = np.array(char_canvas)
 
@@ -824,12 +824,74 @@ def run_wan21_synthesis(frames_dir, masks_dir, wan21_path, wan21_vae_path,
 
         free_vram()
 
-    # Write frames
-    log(f"Wan 2.1: Writing {total} output frames...")
+    # Write frames with Masked Background Lock & Face Lock
+    log(f"Wan 2.1: Compositing {total} frames with Masked Background Lock...")
+    progress("Wan 2.1 Inpainting", "Compositing inpainted subject over 100% locked background...", 88, vram_mb=get_vram_mb())
+
+    # Initialize InSwapper face refine if available
+    swapper = None
+    app = None
+    char_face = None
+    inswapper_path = Path(job.get("inswapperModelPath", str(models_dir / "inswapper_128.onnx")))
+    if not inswapper_path.exists():
+        for alt in [
+            models_dir / "inswapper_128.onnx",
+            Path.home() / ".cache" / "genux" / "models" / "inswapper_128.onnx",
+            Path("D:/Genux testing/Models/inswapper_128.onnx")
+        ]:
+            if alt.exists():
+                inswapper_path = alt
+                break
+
+    if inswapper_path.exists() and char_path and Path(char_path).exists():
+        try:
+            import insightface
+            from insightface.app import FaceAnalysis
+            insight_root = models_dir if (models_dir / "buffalo_l").exists() else Path.home() / ".insightface"
+            app = FaceAnalysis(name='buffalo_l', root=str(insight_root), providers=['CPUExecutionProvider'])
+            app.prepare(ctx_id=0, det_size=(640, 640))
+            swapper = insightface.model_zoo.get_model(str(inswapper_path), download=False, download_zip=False)
+            c_img = _cv2.imread(str(char_path))
+            if c_img is not None:
+                ch, cw = c_img.shape[:2]
+                c_faces = app.get(c_img[:, :cw//2]) if cw >= int(ch * 1.2) else []
+                if not c_faces: c_faces = app.get(c_img)
+                if c_faces:
+                    char_face = max(c_faces, key=lambda f: (f.bbox[2]-f.bbox[0]) * (f.bbox[3]-f.bbox[1]))
+        except Exception as e_sw:
+            log(f"Face refine note: {e_sw}")
+
     for i, frame in enumerate(all_frames):
-        if frame is None:
-            frame = _cv2.imread(str(frame_files[i]))
-        _cv2.imwrite(str(out_frames_dir / f"out_{i:06d}.png"), frame)
+        src_orig = _cv2.imread(str(frame_files[i]))
+        if src_orig is None:
+            continue
+        h_orig, w_orig = src_orig.shape[:2]
+
+        # ── 1. BACKGROUND LOCK: Inpaint subject ONLY inside SAM 2.1 mask ──
+        mask_fp = masks_dir / f"mask_{i:06d}.png"
+        if mask_fp.exists() and frame is not None:
+            mask_gray = _cv2.imread(str(mask_fp), _cv2.IMREAD_GRAYSCALE)
+            if (mask_gray.shape[1], mask_gray.shape[0]) != (w_orig, h_orig):
+                mask_gray = _cv2.resize(mask_gray, (w_orig, h_orig))
+            mask_alpha = _cv2.GaussianBlur(mask_gray, (25, 25), 0).astype(np.float32) / 255.0
+            mask_alpha = mask_alpha[:, :, None]
+            # Background outside mask is 100% original pristine video pixels
+            final_frame = (src_orig.astype(np.float32) * (1.0 - mask_alpha) +
+                           frame.astype(np.float32) * mask_alpha).astype(np.uint8)
+        else:
+            final_frame = frame if frame is not None else src_orig
+
+        # ── 2. FACE LOCK & EXPRESSION REFINE ──
+        if swapper and char_face and app:
+            try:
+                faces = app.get(final_frame)
+                if faces:
+                    target_face = max(faces, key=lambda f: (f.bbox[2]-f.bbox[0]) * (f.bbox[3]-f.bbox[1]))
+                    final_frame = swapper.get(final_frame, target_face, char_face, paste_back=True)
+            except Exception:
+                pass
+
+        _cv2.imwrite(str(out_frames_dir / f"out_{i:06d}.png"), final_frame)
 
     del pipe
     free_vram()
@@ -1369,11 +1431,13 @@ def run_pipeline(job):
         if not char_path and isinstance(job.get("character"), dict):
             char_path = job["character"].get("portraitPath", "") or job["character"].get("imagePath", "")
 
-        if inswapper_path.exists() and char_path and Path(char_path).exists():
-            log(f"Photorealistic InSwapper Recast Engine active: {inswapper_path.name} | char={Path(char_path).name}")
+        recast_mode = job.get("recastMode", "full_body")
+
+        if recast_mode == "face_only" and inswapper_path.exists() and char_path and Path(char_path).exists():
+            log(f"Face Recast Mode active: {inswapper_path.name} | char={Path(char_path).name}")
             run_recast_synthesis(frames_dir, char_path, job, out_frames_dir, inswapper_path)
         else:
-            log("Running Wan 2.1 Video Diffusion synthesis...")
+            log(f"Full Character Inpainting Recast active (100% Background Lock + Neural Inpainting)...")
             run_wan21_synthesis(frames_dir, masks_dir, wan21_path, wan21_vae_path, enhanced, job, out_frames_dir, keypoints=keypoints, mocha_path=mocha_path)
 
         # ── Stage 5: Lip Sync (LatentSync 1.5 → Wav2Lip GAN → skip) ─────────

@@ -583,6 +583,7 @@ export const DesktopStudioApp: React.FC = () => {
   // 10. Camera, Aspect Ratio & Director Prompts
   const [aspectRatio, setAspectRatio] = useState<'9:16' | '16:9' | '1:1' | '4:5'>('9:16');
   const [selectedCamera, setSelectedCamera] = useState<string>('original');
+  const [recastMode, setRecastMode] = useState<'full_body' | 'face_only'>('full_body');
   const [identityWeight, setIdentityWeight] = useState<number>(0.92);
   const [viewMode, setViewMode] = useState<'split' | 'recast' | 'original'>('split');
   const [sliderPosition, setSliderPosition] = useState<number>(50);
@@ -1140,6 +1141,7 @@ export const DesktopStudioApp: React.FC = () => {
           durationSeconds: Math.min(selectedVideo.duration || 10, 15),
           identityWeight: identityWeight || 0.85,
           cameraMode: selectedCamera || 'original',
+          recastMode: recastMode || 'full_body',
           characterAttachments: characterAttachments.map(a => ({
             tag: a.tag,
             name: a.name,
@@ -2270,6 +2272,38 @@ export const DesktopStudioApp: React.FC = () => {
                       </button>
                     );
                   })}
+                </div>
+              </div>
+
+              {/* Recast Scope Selector */}
+              <div className="space-y-1.5">
+                <div className="flex justify-between text-xs font-mono">
+                  <span className="text-slate-400">Recast Scope</span>
+                  <span className="text-indigo-400 font-bold">{recastMode === 'full_body' ? 'Full Body & Outfit' : 'Face Only'}</span>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setRecastMode('full_body')}
+                    className={`px-3 py-2 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition ${
+                      recastMode === 'full_body'
+                        ? 'bg-indigo-600/30 border border-indigo-500/60 text-white shadow-sm shadow-indigo-500/20'
+                        : 'bg-white/[0.03] border border-white/[0.08] text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    <span>🥋 Full Body</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setRecastMode('face_only')}
+                    className={`px-3 py-2 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition ${
+                      recastMode === 'face_only'
+                        ? 'bg-indigo-600/30 border border-indigo-500/60 text-white shadow-sm shadow-indigo-500/20'
+                        : 'bg-white/[0.03] border border-white/[0.08] text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    <span>👤 Face Only</span>
+                  </button>
                 </div>
               </div>
 
