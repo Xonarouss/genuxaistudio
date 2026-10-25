@@ -91,6 +91,10 @@ contextBridge.exposeInMainWorld('genuxNative', {
     const handler = (_, data) => callback(data);
     ipcRenderer.on('pipeline:result', handler);
     return () => ipcRenderer.removeListener('pipeline:result', handler);
-  }
+  },
+
+  // Diagnostics & Bug Reporting
+  exportLogFile: (logsText) => ipcRenderer.invoke('console:exportLog', logsText),
+  reportBugToAdmin: (reportData) => ipcRenderer.invoke('console:reportBug', reportData)
 });
 

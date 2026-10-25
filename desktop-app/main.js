@@ -1518,7 +1518,10 @@ function attachProgressParser(proc, win, onClose) {
 
   proc.stderr.on('data', (data) => {
     const txt = data.toString().trim();
-    if (txt && win) win.webContents.send('pipeline:progress', `[stderr] ${txt}`);
+    if (!txt || !win) return;
+    // Suppress tqdm progress bar lines so they do not cause UI percentage jumps
+    if (txt.includes('%|') || txt.includes('it/s')) return;
+    win.webContents.send('pipeline:progress', `[stderr] ${txt}`);
   });
 
   proc.on('close', onClose);
@@ -2091,6 +2094,73 @@ ipcMain.handle('telemetry:logError', async (_, errorInfo) => {
     performTelemetrySync({ event: 'error', error: true, errorMessage: errStr });
   }
   return true;
+});
+
+// IPC Handler: Export Diagnostic Logs to File
+ipcMain.handle('console:exportLog', async (_, logsText) => {
+  try {
+    const defaultName = `genux_console_log_${Date.now()}.txt`;
+    const { filePath, canceled } = await dialog.showSaveDialog(mainWindow, {
+      title: 'Genux AI Studio — Export Console Diagnostics Log',
+      defaultPath: path.join(app.getPath('downloads'), defaultName),
+      filters: [{ name: 'Text Logs (*.txt)', extensions: ['txt'] }, { name: 'All Files', extensions: ['*'] }]
+    });
+    if (canceled || !filePath) return { success: false, canceled: true };
+    fs.writeFileSync(filePath, logsText || '', 'utf8');
+    return { success: true, filePath };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+});
+
+// IPC Handler: 1-Click Bug Report & Console Log Dispatch to Backend / Admin Panel
+ipcMain.handle('console:reportBug', async (_, reportData = {}) => {
+  try {
+    const gpuName = getDetectedGpu();
+    const payload = JSON.stringify({
+      clientUuid: appSettings.clientUuid || 'client-report',
+      event: 'bug_report',
+      error: true,
+      errorMessage: reportData.userNote || 'User reported issue from Console Diagnostics screen',
+      gpu: gpuName,
+      vram: `${Math.round(os.totalmem() / (1024 * 1024 * 1024))} GB`,
+      ram: `${Math.round(os.totalmem() / (1024 * 1024 * 1024))} GB`,
+      cpu: (os.cpus()[0]?.model || 'x64 Multi-Core CPU').trim(),
+      os: `${os.type()} ${os.release()}`,
+      appVersion: APP_VERSION,
+      logs: reportData.logs || [],
+      errors: [{
+        message: reportData.userNote || 'Manual Bug Report from Console Diagnostics',
+        stack: Array.isArray(reportData.logs) ? reportData.logs.slice(-40).join('\n') : '',
+        timestamp: new Date().toISOString()
+      }]
+    });
+
+    const parsedUrl = new URL(BACKEND_PORTAL_URL);
+    const transport = parsedUrl.protocol === 'https:' ? https : http;
+
+    await new Promise((resolve) => {
+      const req = transport.request({
+        hostname: parsedUrl.hostname,
+        port: parsedUrl.port || (parsedUrl.protocol === 'https:' ? 443 : 80),
+        path: parsedUrl.pathname,
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Content-Length': Buffer.byteLength(payload),
+          'User-Agent': `GenuxAIStudio/${APP_VERSION}`
+        },
+        timeout: 8000
+      }, () => resolve(true));
+      req.on('error', () => resolve(false));
+      req.write(payload);
+      req.end();
+    });
+
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
 });
 
 // Periodic sync every 5 minutes if opted in

@@ -64,6 +64,8 @@ declare global {
       installPythonEnv?: () => Promise<any>;
       onPipProgress?: (callback: (msg: string) => void) => () => void;
       onPipelineResult?: (callback: (data: any) => void) => () => void;
+      exportLogFile?: (logsText: string) => Promise<any>;
+      reportBugToAdmin?: (reportData: any) => Promise<any>;
     };
   }
 }
@@ -606,6 +608,9 @@ export const DesktopStudioApp: React.FC = () => {
     '[Audio] Stereo audio stream multiplexing active.',
     '[Storage] Models directory synchronized with settings.'
   ]);
+  const [isReportingBug, setIsReportingBug] = useState<boolean>(false);
+  const [bugReportStatus, setBugReportStatus] = useState<'idle' | 'success' | 'error'>('idle');
+  const [bugReportMessage, setBugReportMessage] = useState<string>('');
 
   // 13. Maestro-Style Video Trimming & Scrubbing State
   const [currentTime, setCurrentTime] = useState<number>(0);
@@ -1077,11 +1082,17 @@ export const DesktopStudioApp: React.FC = () => {
         if (window.genuxNative.onPipelineProgress) {
           unsubProgress = window.genuxNative.onPipelineProgress((msg: string) => {
             setEngineLogs(prev => [...prev, msg]);
-            // Extract percentage
-            const pctMatch = msg.match(/(\d+)%/);
-            if (pctMatch) {
-              const p = parseInt(pctMatch[1], 10);
-              if (!isNaN(p)) setRenderProgress(p);
+            // Extract percentage only from authoritative pipeline messages (ignore stderr tqdm)
+            if (!msg.startsWith('[stderr]') && !msg.includes('%|') && !msg.includes('it/s')) {
+              const structuredMatch = msg.match(/\((\d+)%\s*\|/);
+              const fallbackMatch = msg.match(/(\d+)%/);
+              const match = structuredMatch || fallbackMatch;
+              if (match) {
+                const p = parseInt(match[1], 10);
+                if (!isNaN(p)) {
+                  setRenderProgress(prev => Math.max(prev, p));
+                }
+              }
             }
             // Extract stage name
             const stageMatch = msg.match(/\[(.*?)\]/);
@@ -2740,22 +2751,163 @@ export const DesktopStudioApp: React.FC = () => {
         {activeNav === 'console' && (
           <div className="flex-1 flex flex-col bg-[#050609] p-6 space-y-4 overflow-hidden">
             <div className="flex items-center justify-between border-b border-white/[0.06] pb-3">
-              <div className="flex items-center gap-2">
-                <Terminal size={16} className="text-indigo-400" />
-                <h3 className="font-bold text-sm text-white font-mono">C++ CUDA Engine Diagnostics</h3>
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-lg bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400">
+                  <Terminal size={16} />
+                </div>
+                <div>
+                  <h3 className="font-bold text-sm text-white font-mono flex items-center gap-2">
+                    C++ CUDA Engine Diagnostics &amp; Console
+                    <span className="text-[10px] font-sans px-2 py-0.5 rounded-full bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 font-medium">
+                      Real-time
+                    </span>
+                  </h3>
+                  <p className="text-[11px] text-slate-400 font-sans">
+                    Inspecteer live logs, download het logbestand of verstuur een 1-klik bug report naar de admin.
+                  </p>
+                </div>
               </div>
-              <span className="text-xs font-mono text-emerald-400 font-semibold">{telemetryInfo.profile}</span>
+
+              {/* Action Buttons */}
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={async () => {
+                    const fullLogText = engineLogs.join('\n');
+                    if (window.genuxNative?.exportLogFile) {
+                      const res = await window.genuxNative.exportLogFile(fullLogText);
+                      if (res && res.success) return;
+                    }
+                    const blob = new Blob([fullLogText], { type: 'text/plain;charset=utf-8' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `genux_console_log_${Date.now()}.txt`;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                  }}
+                  className="px-3 py-1.5 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.08] text-slate-300 hover:text-white font-medium text-xs transition flex items-center gap-1.5 shadow-sm"
+                  title="Download de volledige console logs als .txt bestand"
+                >
+                  <Download size={13} className="text-emerald-400" />
+                  <span>Download Logs</span>
+                </button>
+
+                <button
+                  onClick={async () => {
+                    if (isReportingBug) return;
+                    setIsReportingBug(true);
+                    setBugReportStatus('idle');
+                    try {
+                      const lastError = engineLogs.slice().reverse().find(l => l.includes('Error') || l.includes('ERROR') || l.includes('failed')) || 'Bug reported from console screen';
+                      if (window.genuxNative?.reportBugToAdmin) {
+                        await window.genuxNative.reportBugToAdmin({
+                          logs: engineLogs,
+                          userNote: lastError
+                        });
+                      } else {
+                        await fetch('https://admin.genuxai.io/api/telemetry', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({
+                            event: 'bug_report',
+                            error: true,
+                            errorMessage: lastError,
+                            logs: engineLogs,
+                            appVersion: '1.1.0'
+                          })
+                        }).catch(() => {});
+                      }
+                      setBugReportStatus('success');
+                      setBugReportMessage('Bug Report & console logs verzonden naar Admin Panel!');
+                      setTimeout(() => setBugReportStatus('idle'), 5000);
+                    } catch (err: any) {
+                      setBugReportStatus('error');
+                      setBugReportMessage(`Verzenden mislukt: ${err.message}`);
+                      setTimeout(() => setBugReportStatus('idle'), 5000);
+                    } finally {
+                      setIsReportingBug(false);
+                    }
+                  }}
+                  disabled={isReportingBug}
+                  className={`px-3 py-1.5 rounded-xl border text-xs font-semibold transition flex items-center gap-1.5 shadow-sm ${
+                    isReportingBug
+                      ? 'bg-amber-500/20 border-amber-500/40 text-amber-300 cursor-not-allowed'
+                      : bugReportStatus === 'success'
+                      ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-300'
+                      : 'bg-rose-500/20 hover:bg-rose-500/30 border-rose-500/40 text-rose-300 hover:text-rose-200'
+                  }`}
+                  title="Stuur met 1 klik deze fouten en logs direct door naar het Genux AI Admin Panel"
+                >
+                  {isReportingBug ? (
+                    <>
+                      <RefreshCw size={13} className="animate-spin text-amber-400" />
+                      <span>Verzenden...</span>
+                    </>
+                  ) : bugReportStatus === 'success' ? (
+                    <>
+                      <CheckCircle2 size={13} className="text-emerald-400" />
+                      <span>Verzonden naar Admin!</span>
+                    </>
+                  ) : (
+                    <>
+                      <AlertTriangle size={13} className="text-rose-400" />
+                      <span>Rapporteer Bug / Verstuur naar Admin</span>
+                    </>
+                  )}
+                </button>
+
+                <button
+                  onClick={() => setEngineLogs([])}
+                  className="p-1.5 rounded-xl bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.06] text-slate-400 hover:text-rose-400 transition"
+                  title="Logs wissen"
+                >
+                  <Trash2 size={13} />
+                </button>
+              </div>
             </div>
 
-            <div className="flex-1 bg-[#090B10] border border-white/[0.08] rounded-2xl p-4 font-mono text-xs text-slate-300 overflow-y-auto space-y-1.5 custom-scrollbar">
-              {engineLogs.map((log, idx) => (
-                <div key={idx} className="leading-relaxed">
-                  <span className="text-slate-600 mr-2">[{idx + 1}]</span>
-                  <span className={log.includes('Error') ? 'text-rose-400' : log.includes('CUDA') ? 'text-cyan-400' : 'text-slate-300'}>
-                    {log}
-                  </span>
+            {/* Notification alert banner if reported */}
+            {bugReportStatus === 'success' && (
+              <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-xl px-4 py-2.5 text-xs text-emerald-300 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 size={15} className="text-emerald-400 shrink-0" />
+                  <span>{bugReportMessage || 'Console logs en hardware specificaties succesvol gerapporteerd aan het Genux AI Admin dashboard!'}</span>
                 </div>
-              ))}
+                <button onClick={() => setBugReportStatus('idle')} className="text-emerald-400 hover:text-emerald-200 text-xs">
+                  ✕
+                </button>
+              </div>
+            )}
+
+            {bugReportStatus === 'error' && (
+              <div className="bg-rose-500/10 border border-rose-500/30 rounded-xl px-4 py-2.5 text-xs text-rose-300 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <AlertTriangle size={15} className="text-rose-400 shrink-0" />
+                  <span>{bugReportMessage}</span>
+                </div>
+                <button onClick={() => setBugReportStatus('idle')} className="text-rose-400 hover:text-rose-200 text-xs">
+                  ✕
+                </button>
+              </div>
+            )}
+
+            <div className="flex-1 bg-[#090B10] border border-white/[0.08] rounded-2xl p-4 font-mono text-xs text-slate-300 overflow-y-auto space-y-1.5 custom-scrollbar">
+              {engineLogs.length === 0 ? (
+                <div className="h-full flex items-center justify-center text-slate-500">
+                  <span>Geen actieve logs. Start een recast job of importeer een video om engine diagnostics te zien.</span>
+                </div>
+              ) : (
+                engineLogs.map((log, idx) => (
+                  <div key={idx} className="leading-relaxed">
+                    <span className="text-slate-600 mr-2 select-none">[{idx + 1}]</span>
+                    <span className={log.includes('Error') || log.includes('ERROR') ? 'text-rose-400' : log.includes('CUDA') || log.includes('GPU') ? 'text-cyan-400' : log.includes('[Done]') ? 'text-emerald-400' : 'text-slate-300'}>
+                      {log}
+                    </span>
+                  </div>
+                ))
+              )}
             </div>
           </div>
         )}

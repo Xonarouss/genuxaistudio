@@ -483,22 +483,36 @@ def run_wan21_synthesis(frames_dir, masks_dir, wan21_path, wan21_vae_path,
         transformer = WanTransformer3DModel.from_single_file(
             str(wan21_path), torch_dtype=dtype)
 
-        # Inject MoCha specialized character replacement weights if downloaded
+        # Safely handle MoCha weights without 28.6 GB RAM exhaustion
         if mocha_path and Path(mocha_path).exists():
-            log(f"MoCha: Detected character replacement weights ({Path(mocha_path).name}) -- injecting weights...")
-            progress("MoCha Recast", "Loading character replacement layers into Wan 2.1...", 63, vram_mb=get_vram_mb())
-            try:
-                sd = torch.load(str(mocha_path), map_location="cpu")
-                if "model" in sd: sd = sd["model"]
-                elif "state_dict" in sd: sd = sd["state_dict"]
-                sd = {k: v.to(dtype) if torch.is_tensor(v) else v for k, v in sd.items()}
-                res = transformer.load_state_dict(sd, strict=False)
-                log(f"MoCha: Injected layers (matched: {len(res.missing_keys)}, unexpected: {len(res.unexpected_keys)})")
-                del sd
-            except Exception as e:
-                log(f"MoCha weight injection note: {e}")
+            sz_mb = Path(mocha_path).stat().st_size / (1024 * 1024)
+            if sz_mb > 5000:
+                # 28.6 GB Text-to-Video checkpoint -- do NOT load into RAM alongside Wan 2.1!
+                log(f"MoCha: Detected {Path(mocha_path).name} ({sz_mb/1024:.1f} GB base model). "
+                    f"Bypassing raw CPU weight injection to protect 64 GB system RAM & prevent Windows pagefile thrashing. "
+                    f"Using Wan 2.1 native DiT with SAM 2.1 actor guidance.")
+            else:
+                # LoRA / Adapter weights (< 5 GB)
+                log(f"MoCha: Loading character replacement adapter ({Path(mocha_path).name}, {sz_mb:.0f} MB)...")
+                try:
+                    if str(mocha_path).endswith('.safetensors'):
+                        from safetensors.torch import load_file
+                        sd = load_file(str(mocha_path), device="cpu")
+                    else:
+                        sd = torch.load(str(mocha_path), map_location="cpu")
+                    if "model" in sd: sd = sd["model"]
+                    elif "state_dict" in sd: sd = sd["state_dict"]
+                    res = transformer.load_state_dict(sd, strict=False)
+                    log(f"MoCha: Injected adapter layers (matched: {len(res.missing_keys)})")
+                    del sd
+                    gc.collect()
+                except Exception as e:
+                    log(f"MoCha adapter note: {e}")
 
-        transformer.enable_group_offload(onload_device="cuda", num_blocks_per_group=4)
+        # Optimize offload: 10 blocks per group on RTX 5080 (16GB VRAM) for 4x fewer PCIe swaps
+        transformer.enable_group_offload(onload_device="cuda", num_blocks_per_group=10)
+        gc.collect()
+        free_vram()
 
         vae = None
         if wan21_vae_path and Path(wan21_vae_path).exists():
@@ -520,6 +534,12 @@ def run_wan21_synthesis(frames_dir, masks_dir, wan21_path, wan21_vae_path,
         if pipe.image_encoder is not None:
             pipe.image_encoder.to("cuda", dtype=dtype)
 
+        # Disable internal tqdm progress bar to avoid stderr spam and spurious 0%/100% jumps
+        try:
+            pipe.set_progress_bar_config(disable=True)
+        except Exception:
+            pass
+
         hidden_size = transformer.config.text_dim if hasattr(transformer.config, "text_dim") else 4096
         prompt_embeds = torch.zeros((1, 226, hidden_size), dtype=dtype, device="cuda")
 
@@ -540,10 +560,10 @@ def run_wan21_synthesis(frames_dir, masks_dir, wan21_path, wan21_vae_path,
     gen_h = max(16, int(orig_h * scale) // 16 * 16)
     log(f"Generation resolution: {gen_w}x{gen_h} (orig {orig_w}x{orig_h})")
 
-    # Overlapping window config (safe for 16 GB VRAM @ 480p)
+    # Overlapping window config (33 frames, 5 frame overlap = 28 frame stride, ~10 windows for 300 frames)
     WINDOW  = 33
-    OVERLAP = 9
-    STRIDE  = WINDOW - OVERLAP  # 24
+    OVERLAP = 5
+    STRIDE  = WINDOW - OVERLAP  # 28
 
     windows = []
     s = 0
@@ -560,11 +580,12 @@ def run_wan21_synthesis(frames_dir, masks_dir, wan21_path, wan21_vae_path,
 
     log(f"Processing {total} frames in {len(windows)} windows (GPU DiT)")
     all_frames = [None] * total
+    num_steps = max(6, int(job.get("inferenceSteps", 10)))
 
     for wi, (ws, we, wn) in enumerate(windows):
         pct = 65 + int(wi / len(windows) * 25)
         progress("Wan 2.1 GPU",
-                 f"Window {wi+1}/{len(windows)} | frames {ws}-{we} | GPU denoising...",
+                 f"Window {wi+1}/{len(windows)} | frames {ws}-{min(we, total)} | GPU denoising...",
                  pct, vram_mb=get_vram_mb())
 
         cond = Image.open(frame_files[ws]).convert("RGB").resize((gen_w, gen_h))
@@ -573,6 +594,19 @@ def run_wan21_synthesis(frames_dir, masks_dir, wan21_path, wan21_vae_path,
 
         t0 = time.time()
         frames_np = None
+
+        def _step_callback(pipe_self, step_idx, timestep, callback_kwargs):
+            try:
+                step_frac = (step_idx + 1) / float(num_steps)
+                window_frac = (wi + step_frac) / float(len(windows))
+                smooth_pct = min(89, int(65 + window_frac * 25))
+                progress("Wan 2.1 GPU",
+                         f"Window {wi+1}/{len(windows)} [Step {step_idx+1}/{num_steps}] | GPU denoising...",
+                         smooth_pct, vram_mb=get_vram_mb())
+            except Exception:
+                pass
+            return callback_kwargs
+
         try:
             with torch.no_grad():
                 out = pipe(
@@ -580,12 +614,30 @@ def run_wan21_synthesis(frames_dir, masks_dir, wan21_path, wan21_vae_path,
                     prompt_embeds=prompt_embeds,
                     height=gen_h, width=gen_w,
                     num_frames=wn,
-                    num_inference_steps=job.get("inferenceSteps", 15),
+                    num_inference_steps=num_steps,
                     guidance_scale=1.0,
                     output_type="np",
                     generator=torch.Generator(device="cuda").manual_seed(42 + wi),
+                    callback_on_step_end=_step_callback,
                 )
             frames_np = out.frames[0]  # [T, H, W, 3] float32 [0,1]
+        except TypeError:
+            # Fallback if callback_on_step_end signature differs
+            try:
+                with torch.no_grad():
+                    out = pipe(
+                        image=cond,
+                        prompt_embeds=prompt_embeds,
+                        height=gen_h, width=gen_w,
+                        num_frames=wn,
+                        num_inference_steps=num_steps,
+                        guidance_scale=1.0,
+                        output_type="np",
+                        generator=torch.Generator(device="cuda").manual_seed(42 + wi),
+                    )
+                frames_np = out.frames[0]
+            except Exception as e_inner:
+                log(f"Window {wi+1} fallback failed ({e_inner}) -- using source frames")
         except torch.cuda.OutOfMemoryError:
             free_vram()
             log(f"OOM window {wi+1} -- retrying at 75% res")
@@ -597,7 +649,7 @@ def run_wan21_synthesis(frames_dir, masks_dir, wan21_path, wan21_vae_path,
                         image=cond.resize((rw, rh)),
                         prompt_embeds=prompt_embeds,
                         height=rh, width=rw, num_frames=wn,
-                        num_inference_steps=max(8, job.get("inferenceSteps", 15) - 5),
+                        num_inference_steps=max(6, num_steps - 3),
                         guidance_scale=1.0, output_type="np",
                         generator=torch.Generator(device="cuda").manual_seed(42 + wi),
                     )
@@ -611,7 +663,9 @@ def run_wan21_synthesis(frames_dir, masks_dir, wan21_path, wan21_vae_path,
 
         for li in range(wn):
             gi = ws + li
-            if frames_np is not None:
+            if gi >= total:
+                break
+            if frames_np is not None and li < len(frames_np):
                 rgb = (frames_np[li] * 255).clip(0, 255).astype(np.uint8)
                 bgr = _cv2.cvtColor(rgb, _cv2.COLOR_RGB2BGR)
                 if (bgr.shape[1], bgr.shape[0]) != (orig_w, orig_h):
@@ -620,10 +674,10 @@ def run_wan21_synthesis(frames_dir, masks_dir, wan21_path, wan21_vae_path,
                 bgr = _cv2.imread(str(frame_files[gi]))
 
             # Cross-fade in overlap zone
-            if wi > 0 and li < OVERLAP and all_frames[gi] is not None:
-                a = li / OVERLAP
+            if wi > 0 and li < OVERLAP and gi < total and all_frames[gi] is not None:
+                a = li / float(OVERLAP)
                 prev = all_frames[gi]
-                if prev.shape == bgr.shape:
+                if prev is not None and prev.shape == bgr.shape:
                     bgr = _cv2.addWeighted(prev, 1.0 - a, bgr, a, 0)
 
             all_frames[gi] = bgr
