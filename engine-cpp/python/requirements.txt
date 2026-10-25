@@ -12,7 +12,12 @@ torchvision>=0.19.0
 torchaudio>=2.4.0
 
 # Diffusers (Wan 2.1 / SDXL / LTX-Video / LatentSync VAE loading)
-diffusers>=0.31.0
+# 0.36.0+ required for WanImageToVideoPipeline.from_single_file()
+diffusers>=0.36.0
+
+# xFormers — optional but highly recommended for memory-efficient attention
+# Install: pip install xformers --index-url https://download.pytorch.org/whl/cu124
+# xformers>=0.0.28  # uncomment to require
 transformers>=4.44.0
 accelerate>=0.34.0
 safetensors>=0.4.3

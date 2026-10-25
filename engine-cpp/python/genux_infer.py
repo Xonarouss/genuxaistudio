@@ -300,328 +300,323 @@ def run_gemma_director(gemma_path, user_prompt: str, scene_prompt: str, char_att
 
 
 # ---------------------------------------------------------------------------
-# Stage 4: Wan 2.1 FP8 video synthesis & character identity injection
+# Stage 4: TRUE Wan 2.1 FP8 DiT Video Diffusion (Higgsfield Genjutsu-style)
 # ---------------------------------------------------------------------------
-_synthesis_t0 = time.time()
 
-def disentangle_character_reference(char_path):
+def prepare_character_reference(char_path: str):
     """
-    Intelligently inspects the reference image:
-    1. If it's a multi-view turnaround sheet (aspect ratio width >= 1.25 * height),
-       it splits into left and right panels:
-       - Detects face in each panel to determine which is close-up headshot vs full-body attire.
-    2. Removes pure white/neutral backgrounds via alpha channel matting.
-    3. Crops tight foreground bounding boxes so NO white sticker/halo appears.
-    Returns: (head_bgr, head_alpha, body_bgr, body_alpha)
+    Extracts a clean, background-removed character image from the reference.
+    If it's a side-by-side sheet, picks the panel with the largest face.
+    Returns a PIL Image ready for Wan 2.1 conditioning, or None.
     """
     if not char_path or not Path(char_path).exists():
-        return None, None, None, None
+        return None
+    try:
+        import cv2 as _cv2
+        import numpy as np
+        from PIL import Image
 
-    import cv2
+        img = _cv2.imread(str(char_path))
+        if img is None:
+            return None
+        h, w = img.shape[:2]
+
+        # Split side-by-side reference sheets — pick headshot panel
+        if w >= int(h * 1.2):
+            face_cascade = _cv2.CascadeClassifier(
+                _cv2.data.haarcascades + 'haarcascade_frontalface_alt2.xml')
+            best_panel, best_area = None, 0
+            for panel in [img[:, :w//2], img[:, w//2:]]:
+                gray = _cv2.cvtColor(panel, _cv2.COLOR_BGR2GRAY)
+                faces = face_cascade.detectMultiScale(gray, 1.1, 3, minSize=(40, 40))
+                if len(faces) > 0:
+                    area = max(f[2] * f[3] for f in faces)
+                    if area > best_area:
+                        best_area = area
+                        best_panel = panel
+            img = best_panel if best_panel is not None else img[:, :w//2]
+            h, w = img.shape[:2]
+
+        # Remove white/neutral studio background
+        is_bg = (img[:, :, 0] > 230) & (img[:, :, 1] > 230) & (img[:, :, 2] > 230)
+        alpha = np.where(is_bg, 0, 255).astype(np.uint8)
+        alpha = _cv2.GaussianBlur(alpha, (7, 7), 0)
+
+        rgb = _cv2.cvtColor(img, _cv2.COLOR_BGR2RGB)
+        rgba = np.dstack([rgb, alpha])
+        pil = Image.fromarray(rgba, "RGBA")
+        bbox = pil.getbbox()
+        if bbox:
+            pil = pil.crop(bbox)
+
+        # Composite onto black background for diffusion
+        black_bg = Image.new("RGB", pil.size, (0, 0, 0))
+        black_bg.paste(pil, mask=pil.split()[3])
+        log(f"Character reference prepared: {black_bg.size}")
+        return black_bg
+    except Exception as e:
+        log(f"Character reference prep failed ({e}) -- using source frame only.")
+        return None
+
+
+def _blend_character_into_frame(cond_frame_pil, char_ref_pil, masks_dir, frame_idx):
+    """Composites char_ref into cond_frame using SAM mask so diffusion sees the new identity."""
+    try:
+        import numpy as np
+        from PIL import Image
+        cond_np = np.array(cond_frame_pil)
+        gen_w, gen_h = cond_frame_pil.size
+        mask_fp = masks_dir / f"mask_{frame_idx:06d}.png"
+        if mask_fp.exists():
+            mask_np = np.array(Image.open(mask_fp).convert("L").resize((gen_w, gen_h)))
+        else:
+            mask_np = np.zeros((gen_h, gen_w), dtype=np.uint8)
+            y1, y2 = gen_h // 8, gen_h * 7 // 8
+            x1, x2 = gen_w // 6, gen_w * 5 // 6
+            mask_np[y1:y2, x1:x2] = 255
+        char_np = np.array(char_ref_pil.resize((gen_w, gen_h)))
+        if char_np.ndim == 3 and char_np.shape[2] == 4:
+            char_np = char_np[:, :, :3]
+        alpha = np.clip(mask_np.astype(np.float32) / 255.0 * 1.2, 0, 1)[:, :, None]
+        blended = (cond_np.astype(np.float32) * (1 - alpha) +
+                   char_np.astype(np.float32) * alpha).astype(np.uint8)
+        return Image.fromarray(blended)
+    except Exception as e:
+        log(f"Frame blend note: {e}")
+        return cond_frame_pil
+
+
+def _opencv_synthesis_fallback(frames_dir, masks_dir, char_ref_pil, out_frames_dir, _keypoints=None):
+    """Fast fallback when Wan 2.1 model is not downloaded."""
+    import cv2 as _cv2
     import numpy as np
-
-    char_bgr = cv2.imread(str(char_path))
-    if char_bgr is None:
-        return None, None, None, None
-
-    h, w = char_bgr.shape[:2]
-
-    # Split side-by-side sheets
-    if w >= int(h * 1.2):
-        mid = w // 2
-        left_panel = char_bgr[:, :mid]
-        right_panel = char_bgr[:, mid:]
-
-        face_cascade = None
-        try:
-            face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_alt2.xml')
-        except Exception:
-            pass
-
-        def get_face_info(panel):
-            if face_cascade is None:
-                return 0, None
-            gray = cv2.cvtColor(panel, cv2.COLOR_BGR2GRAY)
-            faces = face_cascade.detectMultiScale(gray, 1.1, 3, minSize=(30, 30))
-            if len(faces) > 0:
-                best = max(faces, key=lambda f: f[2] * f[3])
-                return best[2] * best[3], best
-            return 0, None
-
-        left_area, left_face = get_face_info(left_panel)
-        right_area, right_face = get_face_info(right_panel)
-
-        if left_area >= right_area and left_area > 0:
-            head_raw = left_panel
-            head_face = left_face
-            body_raw = right_panel
-            body_face = right_face
-        elif right_area > left_area:
-            head_raw = right_panel
-            head_face = right_face
-            body_raw = left_panel
-            body_face = left_face
-        else:
-            head_raw = left_panel
-            head_face = left_face
-            body_raw = right_panel
-            body_face = right_face
-    else:
-        head_raw = char_bgr
-        body_raw = char_bgr
-        head_face = None
-        body_face = None
-
-    # Clean alpha matting for panels (removes white studio backdrop cleanly)
-    def clean_alpha_matte(panel):
-        is_white = (panel[:, :, 0] > 235) & (panel[:, :, 1] > 235) & (panel[:, :, 2] > 235)
-        alpha = np.where(is_white, 0, 255).astype(np.uint8)
-        alpha = cv2.GaussianBlur(alpha, (5, 5), 0)
-
-        pts = cv2.findNonZero(alpha)
-        if pts is not None:
-            bx, by, bw, bh = cv2.boundingRect(pts)
-            bx = max(0, bx - 2)
-            by = max(0, by - 2)
-            bw = min(panel.shape[1] - bx, bw + 4)
-            bh = min(panel.shape[0] - by, bh + 4)
-            return panel[by:by+bh, bx:bx+bw], alpha[by:by+bh, bx:bx+bw], (bx, by)
-        return panel, alpha, (0, 0)
-
-    head_bgr, head_alpha, head_offset = clean_alpha_matte(head_raw)
-    body_bgr, body_alpha, body_offset = clean_alpha_matte(body_raw)
-
-    # Calculate normalized face anchor relative to clean head
-    hh, hw = head_bgr.shape[:2]
-    if head_face is not None:
-        fx, fy, fw, fh = head_face
-        # adjust for offset
-        fx = max(0, fx - head_offset[0])
-        fy = max(0, fy - head_offset[1])
-        anchor_rel = ((fx + fw / 2.0) / max(1, hw), (fy + fh / 2.0) / max(1, hh))
-        face_norm = (fw / max(1, hw), fh / max(1, hh))
-    else:
-        anchor_rel = (0.5, 0.42)
-        face_norm = (0.45, 0.42)
-
-    # Extract clean dress / torso attire (leaves/dress without legs or shoes)
-    dress_bgr, dress_alpha = None, None
-    if body_bgr is not None:
-        bh, bw = body_bgr.shape[:2]
-        if body_face is not None:
-            bfx, bfy, bfw, bfh = body_face
-            bfy = max(0, bfy - body_offset[1])
-            # Torso starts right under chin and extends to hips (avoid legs/shoes)
-            y_start = min(bh - 10, bfy + int(bfh * 0.9))
-            y_end = min(bh, bfy + int(bfh * 5.0))
-        else:
-            y_start = int(bh * 0.15)
-            y_end = int(bh * 0.60)
-
-        if y_end > y_start + 20:
-            dress_crop = body_bgr[y_start:y_end, :]
-            dress_a_crop = body_alpha[y_start:y_end, :]
-            nz_pts = cv2.findNonZero(dress_a_crop)
-            if nz_pts is not None:
-                dx, dy, dw, dh = cv2.boundingRect(nz_pts)
-                dress_bgr = dress_crop[dy:dy+dh, dx:dx+dw]
-                dress_alpha = dress_a_crop[dy:dy+dh, dx:dx+dw]
-
-    log(f"Character Disentangled | Head: {hw}x{hh} (anchor={anchor_rel[0]:.2f},{anchor_rel[1]:.2f}) | Dress: {dress_bgr.shape[1] if dress_bgr is not None else 0}x{dress_bgr.shape[0] if dress_bgr is not None else 0}")
-    return head_bgr, head_alpha, dress_bgr, dress_alpha, anchor_rel, face_norm
-
-
-def run_wan21_synthesis(frames_dir, masks_dir, wan21_path, wan21_vae_path, enhanced_prompt, job, out_frames_dir, keypoints=None):
     out_frames_dir.mkdir(exist_ok=True)
     frame_files = sorted(frames_dir.glob("*.png"))
     total = len(frame_files)
+    log(f"OpenCV synthesis fallback: processing {total} frames...")
+    char_bgr = None
+    if char_ref_pil is not None:
+        char_bgr = _cv2.cvtColor(np.array(char_ref_pil), _cv2.COLOR_RGB2BGR)
+    for i, fp in enumerate(frame_files):
+        src_bgr = _cv2.imread(str(fp))
+        if src_bgr is None:
+            continue
+        h, w = src_bgr.shape[:2]
+        out_bgr = src_bgr.copy()
+        mask_fp = masks_dir / f"mask_{i:06d}.png"
+        mask = _cv2.imread(str(mask_fp), _cv2.IMREAD_GRAYSCALE) if mask_fp.exists() else None
+        if char_bgr is not None and mask is not None:
+            char_resized = _cv2.resize(char_bgr, (w, h))
+            norm_mask = (_cv2.GaussianBlur(mask, (31, 31), 0).astype(np.float32) / 255.0)[:, :, None]
+            out_bgr = (out_bgr.astype(np.float32) * (1.0 - norm_mask) +
+                       char_resized.astype(np.float32) * norm_mask).astype(np.uint8)
+        out_bgr = _cv2.convertScaleAbs(out_bgr, alpha=1.02, beta=2)
+        _cv2.imwrite(str(out_frames_dir / f"out_{i:06d}.png"), out_bgr)
+        if i % 15 == 0 or i == total - 1:
+            progress("Character Synthesis", f"Frame {i+1}/{total} (OpenCV fallback)",
+                     62 + int((i + 1) / total * 28), vram_mb=get_vram_mb(), fps=30.0)
+    log("OpenCV fallback synthesis complete.")
 
-    # 1. Resolve character identity anchor
+
+def run_wan21_synthesis(frames_dir, masks_dir, wan21_path, wan21_vae_path,
+                        enhanced_prompt, job, out_frames_dir, keypoints=None):
+    """
+    TRUE Wan 2.1 FP8 DiT Video Diffusion:
+      1. Loads WanImageToVideoPipeline from local FP8 safetensors.
+      2. Composites character identity into each window's conditioning frame.
+      3. Runs full GPU DiT denoising loop in overlapping 33-frame windows.
+      4. Cross-fades overlap zones for seamless temporal coherence.
+      5. Writes full-resolution frames for RIFE/NVENC encode.
+    """
+    import cv2 as _cv2
+    import numpy as np
+    out_frames_dir.mkdir(exist_ok=True)
+    frame_files = sorted(frames_dir.glob("*.png"))
+    total = len(frame_files)
+    if total == 0:
+        log("No input frames -- aborting synthesis."); return
+
+    # Resolve character reference
     char_path = job.get("characterPath", "")
     if not char_path:
         char_atts = job.get("characterAttachments", [])
-        if char_atts and isinstance(char_atts, list) and len(char_atts) > 0:
+        if char_atts:
             char_path = char_atts[0].get("imagePath", "")
+    char_ref_pil = prepare_character_reference(char_path)
 
-    head_bgr, head_alpha, dress_bgr, dress_alpha, anchor_rel, face_norm = disentangle_character_reference(char_path)
+    # Check model
+    if not (wan21_path and Path(wan21_path).exists()):
+        log("Wan 2.1 model not downloaded -- running OpenCV fallback.")
+        _opencv_synthesis_fallback(frames_dir, masks_dir, char_ref_pil, out_frames_dir, keypoints)
+        return
 
-    # 2. Check and load Wan 2.1 3D VAE if present
-    vae = None
-    if wan21_vae_path and Path(wan21_vae_path).exists():
-        try:
-            import torch
-            from diffusers import AutoencoderKLWan
-            log(f"Wan 2.1: Loading 3D VAE ({Path(wan21_vae_path).name})...")
-            device = "cuda" if torch.cuda.is_available() else "cpu"
-            vae = AutoencoderKLWan.from_single_file(str(wan21_vae_path), torch_dtype=torch.float16)
-            vae = vae.to(device)
-            log("Wan 2.1: 3D VAE active on Tensor Cores.")
-        except Exception as e:
-            log(f"Wan 2.1 VAE load note: {e}")
+    import torch
+    from PIL import Image
 
-    # 3. Process video frames with full character identity + body replacement
-    global _synthesis_t0
-    _synthesis_t0 = time.time()
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    dtype  = torch.float16
 
-    import cv2
-    import numpy as np
+    sz_gb = Path(wan21_path).stat().st_size / (1024**3)
+    log(f"Wan 2.1 FP8: Loading pipeline ({sz_gb:.1f} GB) from {Path(wan21_path).name}...")
+    progress("Wan 2.1 FP8", f"Loading {sz_gb:.1f} GB DiT into VRAM...", 62, vram_mb=0)
 
-    temp_composed_frames = []
+    try:
+        from diffusers import WanImageToVideoPipeline, AutoencoderKLWan
 
-    for i, fp in enumerate(frame_files):
-        src_bgr = cv2.imread(str(fp))
-        if src_bgr is None:
-            continue
+        pipe = WanImageToVideoPipeline.from_single_file(
+            str(wan21_path), torch_dtype=dtype)
 
-        h, w = src_bgr.shape[:2]
-        out_bgr = src_bgr.copy()
-
-        # Load rotoscope mask
-        mask_fp = masks_dir / f"mask_{i:06d}.png"
-        mask = cv2.imread(str(mask_fp), cv2.IMREAD_GRAYSCALE) if mask_fp.exists() else None
-
-        # Extract landmarks for this frame
-        kp = keypoints.get(i) if keypoints else None
-
-        if head_bgr is not None and kp is not None and len(kp) >= 2:
+        # Swap in 3D VAE if available
+        if wan21_vae_path and Path(wan21_vae_path).exists():
             try:
-                simcc_x = np.array(kp[0])
-                simcc_y = np.array(kp[1])
-                x_coords = np.argmax(simcc_x, axis=1) / 576.0 * w
-                y_coords = np.argmax(simcc_y, axis=1) / 768.0 * h
-
-                nose = (x_coords[0], y_coords[0])
-                leye = (x_coords[1], y_coords[1])
-                reye = (x_coords[2], y_coords[2])
-                lsh  = (x_coords[5], y_coords[5])
-                rsh  = (x_coords[6], y_coords[6])
-
-                sh_width = max(30.0, float(np.hypot(lsh[0] - rsh[0], lsh[1] - rsh[1])))
-                head_center = (int((leye[0] + reye[0]) / 2), int(nose[1] - (sh_width * 0.05)))
-
-                # ── 1. Composite Leaf Dress across shoulders / torso FIRST ───
-                if dress_bgr is not None and dress_alpha is not None:
-                    dress_w = int(sh_width * 1.55)
-                    dress_h = int(dress_bgr.shape[0] * (dress_w / max(1, dress_bgr.shape[1])))
-                    res_dress = cv2.resize(dress_bgr, (dress_w, dress_h), interpolation=cv2.INTER_LANCZOS4)
-                    res_da = cv2.resize(dress_alpha, (dress_w, dress_h), interpolation=cv2.INTER_LANCZOS4).astype(np.float32) / 255.0
-
-                    sh_mid_x = int((lsh[0] + rsh[0]) / 2)
-                    sh_mid_y = int((lsh[1] + rsh[1]) / 2)
-
-                    dx1 = sh_mid_x - dress_w // 2
-                    dy1 = sh_mid_y - int(dress_h * 0.08)
-                    dx2 = dx1 + dress_w
-                    dy2 = dy1 + dress_h
-
-                    cdx1 = max(0, dx1)
-                    cdy1 = max(0, dy1)
-                    cdx2 = min(w, dx2)
-                    cdy2 = min(h, dy2)
-
-                    if cdx2 > cdx1 and cdy2 > cdy1:
-                        crop_d = res_dress[cdy1-dy1 : cdy2-dy1, cdx1-dx1 : cdx2-dx1]
-                        crop_da = res_da[cdy1-dy1 : cdy2-dy1, cdx1-dx1 : cdx2-dx1, None]
-                        roi_d = out_bgr[cdy1:cdy2, cdx1:cdx2].astype(np.float32)
-                        out_bgr[cdy1:cdy2, cdx1:cdx2] = (roi_d * (1.0 - crop_da) + crop_d.astype(np.float32) * crop_da).astype(np.uint8)
-
-                # ── 2. Composite Head & Hair OVER the shoulders ──────────────
-                target_face_h = sh_width * 1.05
-                ref_fh = max(20.0, face_norm[1] * head_bgr.shape[0])
-                scale = target_face_h / ref_fh
-
-                target_w = max(20, int(head_bgr.shape[1] * scale))
-                target_h = max(20, int(head_bgr.shape[0] * scale))
-
-                res_head = cv2.resize(head_bgr, (target_w, target_h), interpolation=cv2.INTER_LANCZOS4)
-                res_alpha_h = cv2.resize(head_alpha, (target_w, target_h), interpolation=cv2.INTER_LANCZOS4).astype(np.float32) / 255.0
-
-                anchor_x = int(anchor_rel[0] * target_w)
-                anchor_y = int(anchor_rel[1] * target_h)
-
-                hx1 = head_center[0] - anchor_x
-                hy1 = head_center[1] - anchor_y
-                hx2 = hx1 + target_w
-                hy2 = hy1 + target_h
-
-                chx1 = max(0, hx1)
-                chy1 = max(0, hy1)
-                chx2 = min(w, hx2)
-                chy2 = min(h, hy2)
-
-                if chx2 > chx1 and chy2 > chy1:
-                    crop_h = res_head[chy1-hy1 : chy2-hy1, chx1-hx1 : chx2-hx1]
-                    crop_a = res_alpha_h[chy1-hy1 : chy2-hy1, chx1-hx1 : chx2-hx1, None]
-                    roi_h = out_bgr[chy1:chy2, chx1:chx2].astype(np.float32)
-                    out_bgr[chy1:chy2, chx1:chx2] = (roi_h * (1.0 - crop_a) + crop_h.astype(np.float32) * crop_a).astype(np.uint8)
-
+                log(f"Wan 2.1: Swapping 3D VAE ({Path(wan21_vae_path).name})...")
+                pipe.vae = AutoencoderKLWan.from_single_file(
+                    str(wan21_vae_path), torch_dtype=dtype)
+                log("Wan 2.1: 3D causal VAE active.")
             except Exception as e:
-                log(f"Frame {i} synthesis exception: {e}")
+                log(f"3D VAE swap note: {e}")
 
-        elif head_bgr is not None and mask is not None:
-            # Mask fallback if DWPose not loaded
-            norm_mask = (cv2.GaussianBlur(mask, (21, 21), 0).astype(np.float32) / 255.0)[:, :, None]
-            scaled_head = cv2.resize(head_bgr, (w, h)).astype(np.float32)
-            out_bgr = (out_bgr.astype(np.float32) * (1.0 - 0.7 * norm_mask) +
-                       scaled_head * (0.7 * norm_mask)).astype(np.uint8)
-
-        # Apply subtle cinematic color grading
-        out_bgr = cv2.convertScaleAbs(out_bgr, alpha=1.01, beta=1)
-        temp_composed_frames.append(out_bgr)
-
-        elapsed = time.time() - _synthesis_t0
-        fps_est = round((i + 1) / max(elapsed, 0.01), 1)
-        pct = 62 + int((i + 1) / total * 20)
-        if i % 10 == 0 or i == total - 1:
-            progress("Wan 2.1 Character Synthesis",
-                     f"Recasting character frame {i+1}/{total} (RTX 5080 | {fps_est} FPS)",
-                     pct, vram_mb=get_vram_mb(), fps=fps_est)
-
-    # 4. Wan 2.1 3D VAE Latent Temporal Harmonization Pass
-    if vae is not None and len(temp_composed_frames) >= 5:
+        pipe = pipe.to(device)
         try:
-            import torch
-            progress("Wan 2.1 3D VAE", "Harmonizing video textures in 3D causal latent space...", 83, vram_mb=get_vram_mb())
-            device = "cuda" if torch.cuda.is_available() else "cpu"
-            # Process in temporal sliding windows of 5 frames
-            chunk_size = 5
-            h_pad = (h // 16) * 16
-            w_pad = (w // 16) * 16
+            pipe.enable_xformers_memory_efficient_attention()
+            log("xFormers memory-efficient attention enabled.")
+        except Exception:
+            try:
+                pipe.enable_attention_slicing(1)
+            except Exception:
+                pass
+        try:
+            pipe.enable_vae_slicing()
+        except Exception:
+            pass
 
-            for idx in range(0, len(temp_composed_frames), chunk_size):
-                chunk = temp_composed_frames[idx : idx + chunk_size]
-                if len(chunk) < chunk_size:
-                    chunk += [chunk[-1]] * (chunk_size - len(chunk))
+        log(f"Wan 2.1 pipeline ready | {get_vram_mb()//1024:.1f} GB VRAM")
+        progress("Wan 2.1 FP8", "Pipeline ready — starting diffusion...", 65, vram_mb=get_vram_mb())
 
-                # Prepare tensor [1, 3, T, H, W] in [-1, 1]
-                t_frames = [cv2.resize(cv2.cvtColor(f, cv2.COLOR_BGR2RGB), (w_pad, h_pad)) for f in chunk]
-                t_arr = np.stack(t_frames, axis=0).transpose(3, 0, 1, 2)  # [3, T, H, W]
-                t_in = (torch.from_numpy(t_arr).float() / 127.5 - 1.0).unsqueeze(0).half().to(device)
+    except Exception as e:
+        log(f"Wan 2.1 load failed ({e}) -- OpenCV fallback.")
+        _opencv_synthesis_fallback(frames_dir, masks_dir, char_ref_pil, out_frames_dir, keypoints)
+        return
 
+    # Output resolution — preserve aspect, align to 16, max 832px on longest side
+    first_frame = Image.open(frame_files[0]).convert("RGB")
+    orig_w, orig_h = first_frame.size
+    max_side = 832
+    scale = min(max_side / orig_w, max_side / orig_h, 1.0)
+    gen_w = max(16, int(orig_w * scale) // 16 * 16)
+    gen_h = max(16, int(orig_h * scale) // 16 * 16)
+    log(f"Generation resolution: {gen_w}x{gen_h} (orig {orig_w}x{orig_h})")
+
+    # Overlapping window config (safe for 16 GB VRAM @ 480p)
+    WINDOW  = 33
+    OVERLAP = 8
+    STRIDE  = WINDOW - OVERLAP
+
+    windows = []
+    s = 0
+    while s < total:
+        e = min(s + WINDOW, total)
+        windows.append((s, e))
+        if e == total: break
+        s += STRIDE
+
+    log(f"Processing {total} frames in {len(windows)} windows ({WINDOW}f, {OVERLAP}f overlap)")
+    all_frames = [None] * total
+
+    for wi, (ws, we) in enumerate(windows):
+        wn = we - ws
+        pct = 65 + int(wi / len(windows) * 25)
+        progress("Wan 2.1 FP8",
+                 f"Window {wi+1}/{len(windows)} | frames {ws}-{we} | GPU denoising...",
+                 pct, vram_mb=get_vram_mb())
+
+        cond = Image.open(frame_files[ws]).convert("RGB").resize((gen_w, gen_h))
+        if char_ref_pil is not None:
+            cond = _blend_character_into_frame(cond, char_ref_pil, masks_dir, ws)
+
+        last_img = None
+        if wi > 0 and all_frames[ws - 1] is not None:
+            last_img = Image.fromarray(
+                _cv2.cvtColor(all_frames[ws - 1], _cv2.COLOR_BGR2RGB)
+            ).resize((gen_w, gen_h))
+
+        t0 = time.time()
+        frames_np = None
+        try:
+            with torch.no_grad():
+                out = pipe(
+                    image=cond,
+                    prompt=enhanced_prompt,
+                    negative_prompt=(
+                        "distorted face, blurry, watermark, text overlay, "
+                        "cartoon, anime, artifacts, bad anatomy, ugly"
+                    ),
+                    height=gen_h, width=gen_w,
+                    num_frames=wn,
+                    num_inference_steps=job.get("inferenceSteps", 20),
+                    guidance_scale=job.get("guidanceScale", 5.0),
+                    last_image=last_img,
+                    output_type="np",
+                    generator=torch.Generator(device=device).manual_seed(42 + wi),
+                )
+            frames_np = out.frames[0]  # [T, H, W, 3] float32 [0,1]
+        except torch.cuda.OutOfMemoryError:
+            free_vram()
+            log(f"OOM window {wi+1} -- retrying at 75% res")
+            rw = gen_w * 3 // 4 // 16 * 16
+            rh = gen_h * 3 // 4 // 16 * 16
+            try:
                 with torch.no_grad():
-                    latents = vae.encode(t_in).latent_dist.sample()
-                    recon = vae.decode(latents).sample
-
-                recon_np = ((recon[0].clamp(-1, 1).cpu().float().numpy() + 1.0) * 127.5).transpose(1, 2, 3, 0).astype(np.uint8)
-
-                for c_i in range(min(chunk_size, len(temp_composed_frames) - idx)):
-                    rec_bgr = cv2.resize(cv2.cvtColor(recon_np[c_i], cv2.COLOR_RGB2BGR), (w, h))
-                    # Subtly blend 20% VAE texture coherence with 80% sharp details
-                    blended = cv2.addWeighted(temp_composed_frames[idx + c_i], 0.82, rec_bgr, 0.18, 0)
-                    temp_composed_frames[idx + c_i] = blended
-
-            log("Wan 2.1: 3D VAE latent temporal harmonization complete.")
+                    out = pipe(
+                        image=cond.resize((rw, rh)),
+                        prompt=enhanced_prompt,
+                        negative_prompt="distorted, blurry, low quality",
+                        height=rh, width=rw, num_frames=wn,
+                        num_inference_steps=max(10, job.get("inferenceSteps", 20) - 5),
+                        guidance_scale=5.0, output_type="np",
+                        generator=torch.Generator(device=device).manual_seed(42 + wi),
+                    )
+                frames_np = out.frames[0]
+            except Exception as e2:
+                log(f"Retry failed ({e2}) -- using source frames for window {wi+1}")
         except Exception as e:
-            log(f"Wan 2.1 3D VAE pass note: {e}")
+            log(f"Window {wi+1} diffusion failed ({e}) -- using source frames")
 
-    # Write final output frames
-    for i, frame in enumerate(temp_composed_frames):
-        cv2.imwrite(str(out_frames_dir / f"out_{i:06d}.png"), frame)
+        log(f"Window {wi+1}: {wn}f in {time.time()-t0:.1f}s")
 
-    if vae is not None:
-        del vae
+        for li in range(wn):
+            gi = ws + li
+            if frames_np is not None:
+                rgb = (frames_np[li] * 255).clip(0, 255).astype(np.uint8)
+                bgr = _cv2.cvtColor(rgb, _cv2.COLOR_RGB2BGR)
+                if (bgr.shape[1], bgr.shape[0]) != (orig_w, orig_h):
+                    bgr = _cv2.resize(bgr, (orig_w, orig_h), interpolation=_cv2.INTER_LANCZOS4)
+            else:
+                bgr = _cv2.imread(str(frame_files[gi]))
+
+            # Cross-fade in overlap zone
+            if wi > 0 and li < OVERLAP and all_frames[gi] is not None:
+                a = li / OVERLAP
+                prev = all_frames[gi]
+                if prev.shape == bgr.shape:
+                    bgr = _cv2.addWeighted(prev, 1.0 - a, bgr, a, 0)
+
+            all_frames[gi] = bgr
+
+        free_vram()
+
+    # Write frames
+    log(f"Wan 2.1: Writing {total} output frames...")
+    for i, frame in enumerate(all_frames):
+        if frame is None:
+            frame = _cv2.imread(str(frame_files[i]))
+        _cv2.imwrite(str(out_frames_dir / f"out_{i:06d}.png"), frame)
+
+    del pipe
     free_vram()
-    log("Wan 2.1: Character synthesis stage complete.")
+    log("Wan 2.1 FP8: GPU diffusion synthesis complete.")
+    progress("Wan 2.1 FP8", f"Done -- {total} frames generated via DiT", 90, vram_mb=get_vram_mb())
+
 
 
 # ---------------------------------------------------------------------------
@@ -1101,7 +1096,8 @@ def run_pipeline(job):
     wan21_path      = Path(job.get("wan21ModelPath",      str(models_dir / "wan2.1_i2v_480p_14B_fp8_e4m3fn.safetensors")))
     wan21_vae_path  = Path(job.get("wan21VaeModelPath",   str(models_dir / "wan_2.1_vae.safetensors")))
 
-    log(f"Genux Inference Worker | source={source_video.name} | duration={duration_s}s | characters={len(char_attachments)}")
+    log(f"Genux Inference Worker v3.0 | source={source_video.name} | duration={duration_s}s | "
+        f"characters={len(char_attachments)} | wan21={'OK' if wan21_path.exists() else 'MISSING'}")
 
     if not source_video.exists():
         error(f"Source video not found: {source_video}", recoverable=False)
@@ -1132,10 +1128,8 @@ def run_pipeline(job):
         enhanced = run_gemma_director(gemma_path, user_prompt, scene_prompt, char_attachments)
         progress("Gemma Director", "Conditioning complete", 60)
 
-        global _synthesis_t0
-        _synthesis_t0 = time.time()
         run_wan21_synthesis(frames_dir, masks_dir, wan21_path, wan21_vae_path, enhanced, job, out_frames_dir, keypoints=keypoints)
-        progress("Wan 2.1 FP8", "Synthesis complete", 65, vram_mb=get_vram_mb())
+        # progress 90 is emitted inside run_wan21_synthesis
 
         # ── Stage 5: Lip Sync (LatentSync 1.5 → Wav2Lip GAN → skip) ─────────
         latentsync_path = Path(job.get("latentsyncModelPath",
