@@ -95,6 +95,9 @@ contextBridge.exposeInMainWorld('genuxNative', {
 
   // Diagnostics & Bug Reporting
   exportLogFile: (logsText) => ipcRenderer.invoke('console:exportLog', logsText),
-  reportBugToAdmin: (reportData) => ipcRenderer.invoke('console:reportBug', reportData)
+  reportBugToAdmin: (reportData) => ipcRenderer.invoke('console:reportBug', reportData),
+
+  // Video Export & Download to Disk
+  exportVideoFile: (sourcePath, defaultName) => ipcRenderer.invoke('video:export', { sourcePath, defaultName })
 });
 

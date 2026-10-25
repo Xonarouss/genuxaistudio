@@ -2129,6 +2129,7 @@ ipcMain.handle('console:reportBug', async (_, reportData = {}) => {
       os: `${os.type()} ${os.release()}`,
       appVersion: APP_VERSION,
       logs: reportData.logs || [],
+      logsText: Array.isArray(reportData.logs) ? reportData.logs.join('\n') : (reportData.logs || ''),
       errors: [{
         message: reportData.userNote || 'Manual Bug Report from Console Diagnostics',
         stack: Array.isArray(reportData.logs) ? reportData.logs.slice(-40).join('\n') : '',
@@ -2158,6 +2159,30 @@ ipcMain.handle('console:reportBug', async (_, reportData = {}) => {
     });
 
     return { success: true };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+});
+
+// IPC Handler: Export/Download Rendered Master Video to Disk
+ipcMain.handle('video:export', async (_, { sourcePath, defaultName }) => {
+  try {
+    if (!sourcePath || !fs.existsSync(sourcePath)) {
+      return { success: false, error: 'Bronbestand niet gevonden op schijf: ' + (sourcePath || 'onbekend') };
+    }
+    const exportDir = getEffectiveExportDir();
+    const saveName = defaultName || path.basename(sourcePath) || `genux_recast_${Date.now()}.mp4`;
+    const { filePath, canceled } = await dialog.showSaveDialog(mainWindow, {
+      title: 'Download & Sla Master Video Op',
+      defaultPath: path.join(exportDir, saveName),
+      filters: [
+        { name: 'MP4 Video (*.mp4)', extensions: ['mp4'] },
+        { name: 'Alle Bestanden (*.*)', extensions: ['*'] }
+      ]
+    });
+    if (canceled || !filePath) return { success: false, canceled: true };
+    fs.copyFileSync(sourcePath, filePath);
+    return { success: true, targetPath: filePath };
   } catch (err) {
     return { success: false, error: err.message };
   }

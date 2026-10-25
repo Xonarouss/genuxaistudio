@@ -66,6 +66,7 @@ declare global {
       onPipelineResult?: (callback: (data: any) => void) => () => void;
       exportLogFile?: (logsText: string) => Promise<any>;
       reportBugToAdmin?: (reportData: any) => Promise<any>;
+      exportVideoFile?: (sourcePath: string, defaultName?: string) => Promise<any>;
     };
   }
 }
@@ -1018,12 +1019,30 @@ export const DesktopStudioApp: React.FC = () => {
 
   // Manual Export of Rendered Video to User's Chosen Location
   const handleExportRenderedVideo = async (vid: RenderedVideo) => {
-    if (window.genuxNative?.saveVideoDialog) {
-      const chosenPath = await window.genuxNative.saveVideoDialog(`${vid.title}.mp4`);
-      if (chosenPath) {
-        setEngineLogs(prev => [...prev, `[Export] Saved video master to: ${chosenPath}`]);
-        alert(`Video successfully exported to:\n${chosenPath}`);
+    try {
+      if (window.genuxNative?.exportVideoFile && vid.filePath) {
+        const res = await window.genuxNative.exportVideoFile(vid.filePath, `${vid.title || 'genux_recast'}.mp4`);
+        if (res && res.success) {
+          setEngineLogs(prev => [...prev, `[Export] Saved video master to: ${res.targetPath}`]);
+          alert(`Video succesvol gedownload en opgeslagen naar:\n${res.targetPath}`);
+          return;
+        } else if (res && res.canceled) {
+          return;
+        } else if (res && res.error) {
+          throw new Error(res.error);
+        }
       }
+      // Web / fallback direct download
+      const a = document.createElement('a');
+      a.href = safeSrc(vid.filePath);
+      a.download = `${vid.title || 'genux_recast'}.mp4`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setEngineLogs(prev => [...prev, `[Export] Browser download gestart voor: ${vid.title}`]);
+    } catch (err: any) {
+      alert(`Export mislukt: ${err.message}`);
+      setEngineLogs(prev => [...prev, `[Export Error] ${err.message}`]);
     }
   };
 
@@ -1075,8 +1094,8 @@ export const DesktopStudioApp: React.FC = () => {
         }
 
         // 2. Resolve Character Portrait (from selected vault character or character attachment)
-        const characterPath = selectedVaultChar?.portraitPath || 
-          (characterAttachments.length > 0 ? characterAttachments[0].imagePath : '') || '';
+        const characterPath = selectedVaultChar?.portraitPath || selectedVaultChar?.imagePath ||
+          (characterAttachments.length > 0 ? (characterAttachments[0].imagePath || characterAttachments[0].portraitPath) : '') || '';
 
         // 3. Subscribe to real-time engine progress events
         if (window.genuxNative.onPipelineProgress) {
@@ -1124,8 +1143,10 @@ export const DesktopStudioApp: React.FC = () => {
           characterAttachments: characterAttachments.map(a => ({
             tag: a.tag,
             name: a.name,
-            imagePath: a.imagePath
+            imagePath: a.imagePath || a.portraitPath,
+            portraitPath: a.portraitPath || a.imagePath
           })),
+          inferenceSteps: 8,
           enableRIFE60fps: true,
           enableFP8: true
         };

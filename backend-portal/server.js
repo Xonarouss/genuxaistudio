@@ -287,15 +287,37 @@ app.post('/api/telemetry', (req, res) => {
   db.events.unshift(newEvent);
   if (db.events.length > 2000) db.events = db.events.slice(0, 2000);
 
-  // Record errors if reported
+  // Record errors and bug reports if reported
   if (payload.error || payload.errorMessage || (payload.errors && payload.errors.length > 0)) {
     const errList = Array.isArray(payload.errors) && payload.errors.length > 0 ? payload.errors : [payload.errorMessage || 'Reported Error'];
+    const logsArr = Array.isArray(payload.logs) ? payload.logs : [];
+    const logsStr = logsArr.length > 0 ? logsArr.join('\n') : (payload.logsText || '');
+
+    // Ensure reports storage folder exists
+    const reportsDir = path.join(DATA_DIR, 'reports');
+    if (!fs.existsSync(reportsDir)) {
+      try { fs.mkdirSync(reportsDir, { recursive: true }); } catch {}
+    }
+
     for (const err of errList) {
+      const errId = `err-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+      
+      // Save log file directly to server disk if present
+      if (logsStr) {
+        try {
+          fs.writeFileSync(path.join(reportsDir, `${errId}.txt`), logsStr, 'utf8');
+        } catch {}
+      }
+
       db.errors.unshift({
-        id: `err-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+        id: errId,
         message: typeof err === 'string' ? err : err.message || 'Unknown runtime error',
-        stack: err.stack || '',
+        stack: err.stack || (logsArr.slice(-30).join('\n')),
+        logsText: logsStr,
+        hasLogs: logsStr.length > 0,
         gpu: payload.gpu || 'Unknown GPU',
+        vram: payload.vram || 'Unknown',
+        ram: payload.ram || 'Unknown',
         appVersion: payload.appVersion || '1.0.0',
         ip: cleanIp,
         country: geo.country,
@@ -319,6 +341,29 @@ app.post('/api/telemetry', (req, res) => {
     status: 'ok',
     syncedAt: now
   });
+});
+
+// Download full console log for an error report
+app.get('/api/admin/error-log/:id/download', requireAdmin, (req, res) => {
+  const db = readTelemetry();
+  const err = (db.errors || []).find(e => e.id === req.params.id);
+  const reportsDir = path.join(DATA_DIR, 'reports');
+  const diskPath = path.join(reportsDir, `${req.params.id}.txt`);
+
+  let content = '';
+  if (fs.existsSync(diskPath)) {
+    content = fs.readFileSync(diskPath, 'utf8');
+  } else if (err && err.logsText) {
+    content = err.logsText;
+  }
+
+  if (!content) {
+    return res.status(404).send('Geen console logs gevonden voor dit rapport.');
+  }
+
+  res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+  res.setHeader('Content-Disposition', `attachment; filename="${req.params.id}_console_log.txt"`);
+  res.send(content);
 });
 
 // -------------------------------------------------------------------

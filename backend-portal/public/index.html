@@ -634,6 +634,7 @@
                   <th>Error Message</th>
                   <th>GPU</th>
                   <th>Location</th>
+                  <th>Console Log</th>
                 </tr>
               </thead>
               <tbody id="errors-tbody"></tbody>
@@ -988,6 +989,13 @@ function renderErrorsTable(errors) {
       <td style="color:var(--red);font-weight:500">${err.message}</td>
       <td>${err.gpu || '—'}</td>
       <td style="color:var(--muted)">${err.country || '—'}</td>
+      <td>
+        ${err.hasLogs || (err.logsText && err.logsText.length > 0) ? `
+          <a href="${API}/api/admin/error-log/${err.id}/download?token=${JWT}" target="_blank" class="btn btn-sm" style="background:var(--green, #10b981);color:#fff;padding:4px 10px;border-radius:6px;font-size:11px;font-weight:600;text-decoration:none;display:inline-flex;align-items:center;gap:4px;">
+            📥 Download Log (.txt)
+          </a>
+        ` : `<span style="color:var(--muted);font-size:11px;">Geen log</span>`}
+      </td>
     </tr>
   `).join('');
 }

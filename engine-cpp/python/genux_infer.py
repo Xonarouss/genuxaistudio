@@ -58,6 +58,45 @@ def get_vram_mb():
         pass
     return 0
 
+def get_gpu_total_vram_gb():
+    try:
+        import torch
+        if torch.cuda.is_available():
+            return torch.cuda.get_device_properties(0).total_memory / (1024**3)
+    except Exception:
+        pass
+    return 8.0
+
+def enforce_ram_headroom(min_free_gb=3.5):
+    """Enforce at least min_free_gb of physical system RAM remains available at all times."""
+    try:
+        import ctypes
+        class MEMORYSTATUSEX(ctypes.Structure):
+            _fields_ = [
+                ("dwLength", ctypes.c_ulong),
+                ("dwMemoryLoad", ctypes.c_ulong),
+                ("ullTotalPhys", ctypes.c_ulonglong),
+                ("ullAvailPhys", ctypes.c_ulonglong),
+                ("ullTotalPageFile", ctypes.c_ulonglong),
+                ("ullAvailPageFile", ctypes.c_ulonglong),
+                ("ullTotalVirtual", ctypes.c_ulonglong),
+                ("ullAvailVirtual", ctypes.c_ulonglong),
+                ("sullAvailExtendedVirtual", ctypes.c_ulonglong),
+            ]
+        stat = MEMORYSTATUSEX()
+        stat.dwLength = ctypes.sizeof(MEMORYSTATUSEX)
+        if ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(stat)):
+            avail_gb = stat.ullAvailPhys / (1024**3)
+            if avail_gb < min_free_gb:
+                import gc, torch
+                gc.collect()
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+            return avail_gb
+    except Exception:
+        pass
+    return 8.0
+
 def free_vram():
     try:
         import torch
@@ -375,23 +414,26 @@ def _blend_character_into_frame(cond_frame_pil, char_ref_pil, masks_dir, frame_i
             x1, x2 = gen_w // 6, gen_w * 5 // 6
             mask_np[y1:y2, x1:x2] = 255
 
-        # Bounding box alignment so character isn't stretched across full screen
+        # Bounding box alignment: if no subject detected, center character in frame
         coords = np.argwhere(mask_np > 80)
-        if len(coords) > 50:
-            ymin, xmin = coords.min(axis=0)
-            ymax, xmax = coords.max(axis=0)
-            box_w = max(16, xmax - xmin)
-            box_h = max(16, ymax - ymin)
-            char_scaled = char_ref_pil.resize((box_w, box_h), Image.Resampling.LANCZOS)
-            char_canvas = Image.new("RGB", (gen_w, gen_h), (0, 0, 0))
-            char_canvas.paste(char_scaled, (xmin, ymin))
-            char_np = np.array(char_canvas)
-        else:
-            char_np = np.array(char_ref_pil.resize((gen_w, gen_h)))
+        if len(coords) < 100:
+            y1, y2 = gen_h // 8, gen_h * 7 // 8
+            x1, x2 = gen_w // 5, gen_w * 4 // 5
+            mask_np[y1:y2, x1:x2] = 255
+            coords = np.argwhere(mask_np > 80)
+
+        ymin, xmin = coords.min(axis=0)
+        ymax, xmax = coords.max(axis=0)
+        box_w = max(32, xmax - xmin)
+        box_h = max(32, ymax - ymin)
+        char_scaled = char_ref_pil.resize((box_w, box_h), Image.Resampling.LANCZOS)
+        char_canvas = Image.new("RGB", (gen_w, gen_h), (0, 0, 0))
+        char_canvas.paste(char_scaled, (xmin, ymin))
+        char_np = np.array(char_canvas)
 
         if char_np.ndim == 3 and char_np.shape[2] == 4:
             char_np = char_np[:, :, :3]
-        alpha = np.clip(mask_np.astype(np.float32) / 255.0 * 1.1, 0, 1)[:, :, None]
+        alpha = np.clip(mask_np.astype(np.float32) / 255.0, 0, 1)[:, :, None]
         blended = (cond_np.astype(np.float32) * (1 - alpha) +
                    char_np.astype(np.float32) * alpha).astype(np.uint8)
         return Image.fromarray(blended)
@@ -509,8 +551,20 @@ def run_wan21_synthesis(frames_dir, masks_dir, wan21_path, wan21_vae_path,
                 except Exception as e:
                     log(f"MoCha adapter note: {e}")
 
-        # Optimize offload: 10 blocks per group on RTX 5080 (16GB VRAM) for 4x fewer PCIe swaps
-        transformer.enable_group_offload(onload_device="cuda", num_blocks_per_group=10)
+        # Dynamically auto-tune group offload blocks based on GPU hardware:
+        total_vram_gb = get_gpu_total_vram_gb()
+        if total_vram_gb >= 15.0:
+            # 16GB+ GPUs (RTX 5080, 4090, 4080): 20 blocks per group = 2 groups total
+            # Eliminates PCIe bottlenecks and runs CUDA cores near 100% capacity!
+            blocks_per_grp = 20
+        elif total_vram_gb >= 11.0:
+            blocks_per_grp = 10
+        else:
+            blocks_per_grp = 5
+
+        log(f"Wan 2.1: GPU VRAM detected: {total_vram_gb:.1f} GB. Auto-tuning group offload blocks: {blocks_per_grp}")
+        transformer.enable_group_offload(onload_device="cuda", num_blocks_per_group=blocks_per_grp)
+        enforce_ram_headroom(min_free_gb=3.5)
         gc.collect()
         free_vram()
 
@@ -937,8 +991,9 @@ def run_latentsync(frames_dir: Path, audio_path, model_path: Path,
                             unet_in = torch.cat([latent, latent, mask_chan], dim=1)
                         else:
                             unet_in = latent
-                        noise_pred = unet(unet_in.float(), t,
-                                          encoder_hidden_states=mel_proj.float()
+                        unet_dtype = next(unet.parameters()).dtype
+                        noise_pred = unet(unet_in.to(unet_dtype), t,
+                                          encoder_hidden_states=mel_proj.to(unet_dtype)
                                           ).sample
                         # UNet outputs 4-channel latent for VAE decode
                         out_latent = noise_pred[:, :4] if noise_pred.shape[1] >= 4 else noise_pred
@@ -1118,7 +1173,7 @@ def run_lipsync_stage(frames_dir: Path, audio_path, out_frames_dir: Path,
 
 
 
-def extract_frames(video_path, frames_dir, max_fps=24.0):
+def extract_frames(video_path, frames_dir, max_fps=16.0):
     frames_dir.mkdir(parents=True, exist_ok=True)
     audio_path = frames_dir.parent / "source_audio.aac"
 
@@ -1143,14 +1198,15 @@ def extract_frames(video_path, frames_dir, max_fps=24.0):
     except Exception:
         pass
 
+    real_fps = min(fps, max_fps)
     subprocess.run([
         "ffmpeg", "-y", "-i", str(video_path),
-        "-vf", f"fps={min(fps, max_fps)}", "-q:v", "2",
+        "-vf", f"fps={real_fps}", "-q:v", "2",
         str(frames_dir / "%06d.png")
     ], check=True, capture_output=True, timeout=300)
 
     audio = audio_path if (audio_path and Path(audio_path).exists()) else None
-    return fps, audio
+    return real_fps, audio
 
 
 # ---------------------------------------------------------------------------
