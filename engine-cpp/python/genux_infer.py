@@ -219,7 +219,10 @@ def run_dwpose(frames_dir, dwpose_path):
         import numpy as np
         from PIL import Image
 
-        providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
+        available = ort.get_available_providers()
+        providers = [p for p in ["CUDAExecutionProvider", "CPUExecutionProvider"] if p in available]
+        if not providers:
+            providers = ["CPUExecutionProvider"]
         sess = ort.InferenceSession(str(dwpose_path), providers=providers)
         input_name = sess.get_inputs()[0].name
         frame_files = sorted(frames_dir.glob("*.png"))
