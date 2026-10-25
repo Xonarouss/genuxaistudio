@@ -553,14 +553,14 @@ def run_wan21_synthesis(frames_dir, masks_dir, wan21_path, wan21_vae_path,
 
         # Dynamically auto-tune group offload blocks based on GPU hardware:
         total_vram_gb = get_gpu_total_vram_gb()
-        if total_vram_gb >= 15.0:
-            # 16GB+ GPUs (RTX 5080, 4090, 4080): 20 blocks per group = 2 groups total
-            # Eliminates PCIe bottlenecks and runs CUDA cores near 100% capacity!
-            blocks_per_grp = 20
+        if total_vram_gb >= 22.0:
+            blocks_per_grp = 20  # 24GB GPUs (RTX 4090, 3090)
+        elif total_vram_gb >= 14.0:
+            blocks_per_grp = 8   # 16GB GPUs (RTX 5080, 4080): 8 blocks = 5.6GB weights, 12.5GB peak total (zero WDDM thrashing)
         elif total_vram_gb >= 11.0:
-            blocks_per_grp = 10
+            blocks_per_grp = 6   # 12GB GPUs (RTX 3060, 4070)
         else:
-            blocks_per_grp = 5
+            blocks_per_grp = 4   # 8GB GPUs
 
         log(f"Wan 2.1: GPU VRAM detected: {total_vram_gb:.1f} GB. Auto-tuning group offload blocks: {blocks_per_grp}")
         transformer.enable_group_offload(onload_device="cuda", num_blocks_per_group=blocks_per_grp)
@@ -614,7 +614,7 @@ def run_wan21_synthesis(frames_dir, masks_dir, wan21_path, wan21_vae_path,
     gen_h = max(16, int(orig_h * scale) // 16 * 16)
     log(f"Generation resolution: {gen_w}x{gen_h} (orig {orig_w}x{orig_h})")
 
-    # Overlapping window config (33 frames, 5 frame overlap = 28 frame stride, ~10 windows for 300 frames)
+    # Overlapping window config (33 frames, 5 frame overlap = 28 frame stride)
     WINDOW  = 33
     OVERLAP = 5
     STRIDE  = WINDOW - OVERLAP  # 28
@@ -634,12 +634,12 @@ def run_wan21_synthesis(frames_dir, masks_dir, wan21_path, wan21_vae_path,
 
     log(f"Processing {total} frames in {len(windows)} windows (GPU DiT)")
     all_frames = [None] * total
-    num_steps = max(6, int(job.get("inferenceSteps", 10)))
+    num_steps = max(5, int(job.get("inferenceSteps", 6)))
 
     for wi, (ws, we, wn) in enumerate(windows):
         pct = 65 + int(wi / len(windows) * 25)
         progress("Wan 2.1 GPU",
-                 f"Window {wi+1}/{len(windows)} | frames {ws}-{min(we, total)} | GPU denoising...",
+                 f"Window {wi+1}/{len(windows)} | Denoising Step 1/{num_steps} (frames {ws}-{min(we, total)})...",
                  pct, vram_mb=get_vram_mb())
 
         cond = Image.open(frame_files[ws]).convert("RGB").resize((gen_w, gen_h))
@@ -654,15 +654,16 @@ def run_wan21_synthesis(frames_dir, masks_dir, wan21_path, wan21_vae_path,
                 step_frac = (step_idx + 1) / float(num_steps)
                 window_frac = (wi + step_frac) / float(len(windows))
                 smooth_pct = min(89, int(65 + window_frac * 25))
+                cur_vram = get_vram_mb()
                 progress("Wan 2.1 GPU",
                          f"Window {wi+1}/{len(windows)} [Step {step_idx+1}/{num_steps}] | GPU denoising...",
-                         smooth_pct, vram_mb=get_vram_mb())
+                         smooth_pct, vram_mb=cur_vram)
             except Exception:
                 pass
             return callback_kwargs
 
         try:
-            with torch.no_grad():
+            with torch.inference_mode():
                 out = pipe(
                     image=cond,
                     prompt_embeds=prompt_embeds,
@@ -678,7 +679,7 @@ def run_wan21_synthesis(frames_dir, masks_dir, wan21_path, wan21_vae_path,
         except TypeError:
             # Fallback if callback_on_step_end signature differs
             try:
-                with torch.no_grad():
+                with torch.inference_mode():
                     out = pipe(
                         image=cond,
                         prompt_embeds=prompt_embeds,
