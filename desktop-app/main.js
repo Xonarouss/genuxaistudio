@@ -598,6 +598,30 @@ const MODEL_CATALOG = {
     url: 'https://huggingface.co/Nekochu/Wav2Lip/resolve/main/wav2lip_gan.pth',
     backupUrl: 'https://huggingface.co/AOLCDROM/WAV2LIP-HQ-Updated-MIRROR/resolve/main/wav2lip_gan.pth',
     category: 'lipsync'
+  },
+  minimax_h3_recast: {
+    id: 'minimax_h3_recast',
+    name: 'MiniMax H3 Character Swap LoRA (v1.5 Ref2VA)',
+    filename: 'h3_character_swap_v1.5.safetensors',
+    sizeBytes: 350000000,
+    url: 'https://huggingface.co/akatz-ai/MiniMax-H3-Character-Swap-LoRA/resolve/main/h3_character_swap_v1.5.safetensors',
+    category: 'synthesis'
+  },
+  mocha_recast: {
+    id: 'mocha_recast',
+    name: 'MoCha Wan 2.1 Video Character Replacement',
+    filename: 'mocha_step18500.ckpt',
+    sizeBytes: 28600000000,
+    url: 'https://huggingface.co/Orange-3DV-Team/MoCha/resolve/main/preview/step18500.ckpt',
+    category: 'synthesis'
+  },
+  mimicmotion: {
+    id: 'mimicmotion',
+    name: 'MimicMotion Pose Guidance Motion Transfer (Tencent)',
+    filename: 'MimicMotion_1-1.pth',
+    sizeBytes: 2500000000,
+    url: 'https://huggingface.co/ixaac/MimicMotion/resolve/main/MimicMotion_1-1.pth',
+    category: 'motion'
   }
 };
 
@@ -1564,7 +1588,7 @@ ipcMain.handle('engine:startRecastJob', async (_, jobConfig) => {
     const modelsDir = getEffectiveModelsDir();
     const enrichedConfig = {
       sourceVideoPath:   sourceVideo,
-      characterPath:     jobConfig.characterPath || '',
+      characterPath:     jobConfig.characterPath || jobConfig.portraitPath || (jobConfig.character && (jobConfig.character.portraitPath || jobConfig.character.imagePath)) || '',
       userPrompt:        jobConfig.userPrompt || '',
       scenePrompt:       jobConfig.scenePrompt || '',
       outputVideoPath:   jobConfig.outputVideoPath || path.join(getEffectiveExportDir(), `genux_recast_${Date.now()}.mp4`),
@@ -1589,6 +1613,9 @@ ipcMain.handle('engine:startRecastJob', async (_, jobConfig) => {
       // Lip sync (optional — pipeline skips gracefully if not downloaded)
       latentsyncModelPath: path.join(modelsDir, MODEL_CATALOG.latentsync.filename),
       wav2lipModelPath:    path.join(modelsDir, MODEL_CATALOG.wav2lip.filename),
+      minimaxModelPath:    path.join(modelsDir, MODEL_CATALOG.minimax_h3_recast.filename),
+      mochaModelPath:      path.join(modelsDir, MODEL_CATALOG.mocha_recast.filename),
+      mimicmotionModelPath: path.join(modelsDir, MODEL_CATALOG.mimicmotion.filename),
       // Report which models are on disk
       availableModels: {
         wan21:      fs.existsSync(path.join(modelsDir, MODEL_CATALOG.wan21.filename)),
@@ -1599,7 +1626,10 @@ ipcMain.handle('engine:startRecastJob', async (_, jobConfig) => {
         ltxvideo:   fs.existsSync(path.join(modelsDir, MODEL_CATALOG.ltxvideo.filename)),
         pulid:      fs.existsSync(path.join(modelsDir, MODEL_CATALOG.pulid.filename)),
         latentsync: fs.existsSync(path.join(modelsDir, MODEL_CATALOG.latentsync.filename)),
-        wav2lip:    fs.existsSync(path.join(modelsDir, MODEL_CATALOG.wav2lip.filename))
+        wav2lip:    fs.existsSync(path.join(modelsDir, MODEL_CATALOG.wav2lip.filename)),
+        minimax:    fs.existsSync(path.join(modelsDir, MODEL_CATALOG.minimax_h3_recast.filename)),
+        mocha:      fs.existsSync(path.join(modelsDir, MODEL_CATALOG.mocha_recast.filename)),
+        mimicmotion: fs.existsSync(path.join(modelsDir, MODEL_CATALOG.mimicmotion.filename))
       }
     };
 

@@ -360,7 +360,7 @@ def prepare_character_reference(char_path: str):
 
 
 def _blend_character_into_frame(cond_frame_pil, char_ref_pil, masks_dir, frame_idx):
-    """Composites char_ref into cond_frame using SAM mask so diffusion sees the new identity."""
+    """Composites char_ref into cond_frame using SAM bounding box and mask so diffusion sees the new identity."""
     try:
         import numpy as np
         from PIL import Image
@@ -374,10 +374,24 @@ def _blend_character_into_frame(cond_frame_pil, char_ref_pil, masks_dir, frame_i
             y1, y2 = gen_h // 8, gen_h * 7 // 8
             x1, x2 = gen_w // 6, gen_w * 5 // 6
             mask_np[y1:y2, x1:x2] = 255
-        char_np = np.array(char_ref_pil.resize((gen_w, gen_h)))
+
+        # Bounding box alignment so character isn't stretched across full screen
+        coords = np.argwhere(mask_np > 80)
+        if len(coords) > 50:
+            ymin, xmin = coords.min(axis=0)
+            ymax, xmax = coords.max(axis=0)
+            box_w = max(16, xmax - xmin)
+            box_h = max(16, ymax - ymin)
+            char_scaled = char_ref_pil.resize((box_w, box_h), Image.Resampling.LANCZOS)
+            char_canvas = Image.new("RGB", (gen_w, gen_h), (0, 0, 0))
+            char_canvas.paste(char_scaled, (xmin, ymin))
+            char_np = np.array(char_canvas)
+        else:
+            char_np = np.array(char_ref_pil.resize((gen_w, gen_h)))
+
         if char_np.ndim == 3 and char_np.shape[2] == 4:
             char_np = char_np[:, :, :3]
-        alpha = np.clip(mask_np.astype(np.float32) / 255.0 * 1.2, 0, 1)[:, :, None]
+        alpha = np.clip(mask_np.astype(np.float32) / 255.0 * 1.1, 0, 1)[:, :, None]
         blended = (cond_np.astype(np.float32) * (1 - alpha) +
                    char_np.astype(np.float32) * alpha).astype(np.uint8)
         return Image.fromarray(blended)
@@ -437,11 +451,13 @@ def run_wan21_synthesis(frames_dir, masks_dir, wan21_path, wan21_vae_path,
         log("No input frames -- aborting synthesis."); return
 
     # Resolve character reference
-    char_path = job.get("characterPath", "")
+    char_path = job.get("characterPath", "") or job.get("portraitPath", "")
     if not char_path:
         char_atts = job.get("characterAttachments", [])
         if char_atts:
-            char_path = char_atts[0].get("imagePath", "")
+            char_path = char_atts[0].get("imagePath", "") or char_atts[0].get("portraitPath", "")
+    if not char_path and isinstance(job.get("character"), dict):
+        char_path = job["character"].get("portraitPath", "") or job["character"].get("imagePath", "")
     char_ref_pil = prepare_character_reference(char_path)
 
     # Check model
@@ -454,44 +470,44 @@ def run_wan21_synthesis(frames_dir, masks_dir, wan21_path, wan21_vae_path,
     from PIL import Image
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    dtype  = torch.float16
+    dtype  = torch.bfloat16
 
     sz_gb = Path(wan21_path).stat().st_size / (1024**3)
-    log(f"Wan 2.1 FP8: Loading pipeline ({sz_gb:.1f} GB) from {Path(wan21_path).name}...")
-    progress("Wan 2.1 FP8", f"Loading {sz_gb:.1f} GB DiT into VRAM...", 62, vram_mb=0)
+    log(f"Wan 2.1 GPU: Loading DiT transformer ({sz_gb:.1f} GB) from {Path(wan21_path).name}...")
+    progress("Wan 2.1 GPU", f"Loading {sz_gb:.1f} GB DiT with group offload...", 62, vram_mb=get_vram_mb())
 
     try:
-        from diffusers import WanImageToVideoPipeline, AutoencoderKLWan
+        from diffusers import WanImageToVideoPipeline, WanTransformer3DModel, AutoencoderKLWan
 
-        pipe = WanImageToVideoPipeline.from_single_file(
+        transformer = WanTransformer3DModel.from_single_file(
             str(wan21_path), torch_dtype=dtype)
+        transformer.enable_group_offload(onload_device="cuda", num_blocks_per_group=4)
 
-        # Swap in 3D VAE if available
+        vae = None
         if wan21_vae_path and Path(wan21_vae_path).exists():
             try:
-                log(f"Wan 2.1: Swapping 3D VAE ({Path(wan21_vae_path).name})...")
-                pipe.vae = AutoencoderKLWan.from_single_file(
-                    str(wan21_vae_path), torch_dtype=dtype)
+                log(f"Wan 2.1: Loading 3D VAE ({Path(wan21_vae_path).name})...")
+                vae = AutoencoderKLWan.from_single_file(str(wan21_vae_path), torch_dtype=dtype).to("cuda")
                 log("Wan 2.1: 3D causal VAE active.")
             except Exception as e:
-                log(f"3D VAE swap note: {e}")
+                log(f"3D VAE load note: {e}")
 
-        pipe = pipe.to(device)
-        try:
-            pipe.enable_xformers_memory_efficient_attention()
-            log("xFormers memory-efficient attention enabled.")
-        except Exception:
-            try:
-                pipe.enable_attention_slicing(1)
-            except Exception:
-                pass
-        try:
-            pipe.enable_vae_slicing()
-        except Exception:
-            pass
+        pipe = WanImageToVideoPipeline.from_pretrained(
+            "Wan-AI/Wan2.1-I2V-14B-480P-Diffusers",
+            text_encoder=None,
+            tokenizer=None,
+            transformer=transformer,
+            vae=vae,
+            torch_dtype=dtype,
+        )
+        if pipe.image_encoder is not None:
+            pipe.image_encoder.to("cuda", dtype=dtype)
 
-        log(f"Wan 2.1 pipeline ready | {get_vram_mb()//1024:.1f} GB VRAM")
-        progress("Wan 2.1 FP8", "Pipeline ready — starting diffusion...", 65, vram_mb=get_vram_mb())
+        hidden_size = transformer.config.text_dim if hasattr(transformer.config, "text_dim") else 4096
+        prompt_embeds = torch.zeros((1, 226, hidden_size), dtype=dtype, device="cuda")
+
+        log(f"Wan 2.1 GPU diffusion pipeline ready | {get_vram_mb()} MB VRAM")
+        progress("Wan 2.1 GPU", "Pipeline ready — GPU diffusion active...", 65, vram_mb=get_vram_mb())
 
     except Exception as e:
         log(f"Wan 2.1 load failed ({e}) -- OpenCV fallback.")
@@ -509,24 +525,28 @@ def run_wan21_synthesis(frames_dir, masks_dir, wan21_path, wan21_vae_path,
 
     # Overlapping window config (safe for 16 GB VRAM @ 480p)
     WINDOW  = 33
-    OVERLAP = 8
-    STRIDE  = WINDOW - OVERLAP
+    OVERLAP = 9
+    STRIDE  = WINDOW - OVERLAP  # 24
 
     windows = []
     s = 0
     while s < total:
         e = min(s + WINDOW, total)
-        windows.append((s, e))
-        if e == total: break
+        wn = e - s
+        if (wn - 1) % 4 != 0:
+            wn = ((wn - 1) // 4 + 1) * 4 + 1
+            e = min(s + wn, total)
+        windows.append((s, e, wn))
+        if s + WINDOW >= total:
+            break
         s += STRIDE
 
-    log(f"Processing {total} frames in {len(windows)} windows ({WINDOW}f, {OVERLAP}f overlap)")
+    log(f"Processing {total} frames in {len(windows)} windows (GPU DiT)")
     all_frames = [None] * total
 
-    for wi, (ws, we) in enumerate(windows):
-        wn = we - ws
+    for wi, (ws, we, wn) in enumerate(windows):
         pct = 65 + int(wi / len(windows) * 25)
-        progress("Wan 2.1 FP8",
+        progress("Wan 2.1 GPU",
                  f"Window {wi+1}/{len(windows)} | frames {ws}-{we} | GPU denoising...",
                  pct, vram_mb=get_vram_mb())
 
@@ -534,30 +554,19 @@ def run_wan21_synthesis(frames_dir, masks_dir, wan21_path, wan21_vae_path,
         if char_ref_pil is not None:
             cond = _blend_character_into_frame(cond, char_ref_pil, masks_dir, ws)
 
-        last_img = None
-        if wi > 0 and all_frames[ws - 1] is not None:
-            last_img = Image.fromarray(
-                _cv2.cvtColor(all_frames[ws - 1], _cv2.COLOR_BGR2RGB)
-            ).resize((gen_w, gen_h))
-
         t0 = time.time()
         frames_np = None
         try:
             with torch.no_grad():
                 out = pipe(
                     image=cond,
-                    prompt=enhanced_prompt,
-                    negative_prompt=(
-                        "distorted face, blurry, watermark, text overlay, "
-                        "cartoon, anime, artifacts, bad anatomy, ugly"
-                    ),
+                    prompt_embeds=prompt_embeds,
                     height=gen_h, width=gen_w,
                     num_frames=wn,
-                    num_inference_steps=job.get("inferenceSteps", 20),
-                    guidance_scale=job.get("guidanceScale", 5.0),
-                    last_image=last_img,
+                    num_inference_steps=job.get("inferenceSteps", 15),
+                    guidance_scale=1.0,
                     output_type="np",
-                    generator=torch.Generator(device=device).manual_seed(42 + wi),
+                    generator=torch.Generator(device="cuda").manual_seed(42 + wi),
                 )
             frames_np = out.frames[0]  # [T, H, W, 3] float32 [0,1]
         except torch.cuda.OutOfMemoryError:
@@ -569,12 +578,11 @@ def run_wan21_synthesis(frames_dir, masks_dir, wan21_path, wan21_vae_path,
                 with torch.no_grad():
                     out = pipe(
                         image=cond.resize((rw, rh)),
-                        prompt=enhanced_prompt,
-                        negative_prompt="distorted, blurry, low quality",
+                        prompt_embeds=prompt_embeds,
                         height=rh, width=rw, num_frames=wn,
-                        num_inference_steps=max(10, job.get("inferenceSteps", 20) - 5),
-                        guidance_scale=5.0, output_type="np",
-                        generator=torch.Generator(device=device).manual_seed(42 + wi),
+                        num_inference_steps=max(8, job.get("inferenceSteps", 15) - 5),
+                        guidance_scale=1.0, output_type="np",
+                        generator=torch.Generator(device="cuda").manual_seed(42 + wi),
                     )
                 frames_np = out.frames[0]
             except Exception as e2:
@@ -582,7 +590,7 @@ def run_wan21_synthesis(frames_dir, masks_dir, wan21_path, wan21_vae_path,
         except Exception as e:
             log(f"Window {wi+1} diffusion failed ({e}) -- using source frames")
 
-        log(f"Window {wi+1}: {wn}f in {time.time()-t0:.1f}s")
+        log(f"Window {wi+1}: {wn}f in {time.time()-t0:.1f}s | VRAM {get_vram_mb()} MB")
 
         for li in range(wn):
             gi = ws + li
